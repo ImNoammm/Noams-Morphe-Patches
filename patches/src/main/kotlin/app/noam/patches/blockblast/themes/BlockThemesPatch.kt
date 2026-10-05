@@ -7,7 +7,7 @@ import app.noam.patches.blockblast.shared.Constants.COMPATIBILITY_BLOCK_BLAST
 
 /** The style list rendered alongside the art (blocks/styles.json: [{"id":..,"label":..}, ...]). */
 private fun styles(): List<Pair<String, String>> =
-    Regex("\\{\\s*\"id\"\\s*:\\s*\"([^\"]+)\"\\s*,\\s*\"label\"\\s*:\\s*\"([^\"]+)\"\\s*}")
+    Regex("\\{\\s*\"id\"\\s*:\\s*\"([^\"]+)\"\\s*,\\s*\"label\"\\s*:\\s*\"([^\"]+)\"\\s*\\}")
         .findAll(Mod.resource("blocks/styles.json"))
         .map { it.groupValues[1] to it.groupValues[2] }
         .toList()
