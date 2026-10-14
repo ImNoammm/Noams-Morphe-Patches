@@ -14,9 +14,13 @@
   <a href="https://www.buymeacoffee.com/Noamm"><img alt="Buy Me A Coffee" src="https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png"></a>
 </p>
 
+
 These are the patches I make for apps I use, all in one [Morphe](https://morphe.software) source. Add it to
 Morphe Manager once and you can patch any app here right on your phone. When I add patches for another app,
 they show up in the same source.
+
+
+## [Open this link to add this repo to Morphe](https://morphe.software/add-source?github=ImNoammm/Noams-Morphe-Patches&name=Noam%27s%20Morphe%20Patches)
 
 ## What's in it
 
