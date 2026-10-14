@@ -37,6 +37,13 @@ Right now it has patches for these apps:
   Openverse) through a small helper app, the only part that goes online. Right-to-left languages only change the
   letters on the keys. It installs next to the normal Gboard and its switches are under No-Google in Gboard's
   settings.
+- Geocaching 10.21.0: Premium-only features work on a Basic account, each as its own switch: map filters,
+  statistics from your own finds, log templates, lists, experimental features and sorting your finds and hides,
+  and the upgrade badges are gone. Caches the app locks behind Premium open too: they load from geocaching.com the
+  way c:geo does, so they show what the website shows your account. Map search comes from geocaching.com as well,
+  and the caches you see on the map or open stay on the phone for offline use. There's a map that needs no Google
+  key, with free street, satellite, terrain and hybrid layers, it comes back faster when you switch tabs, and you
+  get a native description viewer, photo downloads and one sign-in for the app and the website.
 
 ## Getting it
 
@@ -46,11 +53,14 @@ Right now it has patches for these apps:
    to add the source, or add `https://github.com/ImNoammm/Noams-Morphe-Patches` under Patch sources yourself.
 3. Pick the app and the patches you want, and patch it.
 
-Each app needs the version listed above. Morphe Manager signs what it patches with its own key, so if the app
-is already installed with a different signature, like the Play Store version, uninstall it first.
+Each app needs the version listed above, and you have to start from the stock app: patching a copy you already
+patched doesn't work, so if Manager picks your installed patched app, choose the original APK instead. Morphe
+Manager signs what it patches with its own key, so if the app is already installed with a different signature,
+like the Play Store version, uninstall it first.
 
-Gboard downloads its voice and translation models in No-Google settings. Downloads and GIFs go through the
-helper app, which the keyboard installs for you when it needs it (Android asks you to confirm).
+After you install Gboard, tap its app icon: it takes you to turn the keyboard on and then to choose it, one step at
+a time. Its voice and translation models download in No-Google settings. Downloads and GIFs go through the helper
+app, which the keyboard installs for you when it needs it (Android asks you to confirm).
 
 ## Building it
 
@@ -81,6 +91,9 @@ jar at `~/gb/morphe-desktop.jar` and sign the helper with the keystore in `KEYST
   (GPL-2.0). Their versions and licenses, and those of the libraries they use, are in
   [gboard/THIRD_PARTY_NOTICES.txt](gboard/THIRD_PARTY_NOTICES.txt). The models (Whisper, Tencent Hy-MT and
   Firefox Translations) are downloaded on the phone, not shipped here.
+- Geocaching's map search and cache pages read geocaching.com the way [c:geo](https://github.com/cgeo/cgeo) does,
+  and some of its page patterns come from c:geo (Apache-2.0). Its map layers come from OpenStreetMap, OpenTopoMap
+  and Esri.
 - Block Blast is Hungry Studio's game. The iOS generation patch runs code from its iOS version.
 
 ## License

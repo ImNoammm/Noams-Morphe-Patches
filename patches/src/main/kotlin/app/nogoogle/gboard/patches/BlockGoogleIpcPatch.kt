@@ -237,6 +237,7 @@ val disableGooglePlayServicesPatch = bytecodePatch(
     default = true,
 ) {
     compatibleWith(COMPATIBILITY_GBOARD)
+    dependsOn(extensionPatch)
 
     execute {
         val targets = ArrayList<Pair<ClassDef, Method>>()
@@ -281,6 +282,7 @@ val signatureSelfCheckPatch = bytecodePatch(
     default = true,
 ) {
     compatibleWith(COMPATIBILITY_GBOARD)
+    dependsOn(extensionPatch)
 
     execute {
         val classDef = classDefBy { cd ->

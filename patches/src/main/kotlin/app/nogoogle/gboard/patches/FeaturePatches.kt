@@ -40,6 +40,7 @@ private const val KEYBOARD_DIRECTION = "$EXT/KeyboardDirection;"
 private const val TABS = "$EXT/ExpressionTabs;"
 private const val PORTED = "$EXT/extras/PortedFeatures;"
 private const val GIF_BRIDGE = "$EXT/gif/GifBridge;"
+private const val KEYBOARD_PICKER = "$EXT/KeyboardPicker;"
 private const val GIF_EXTENSION_INTERFACE =
     "Lcom/google/android/apps/inputmethod/libs/expression/extension/IGifKeyboardExtension;"
 private const val GIF_SEARCH_KEYBOARD = "Lcom/google/android/apps/inputmethod/libs/search/gif/GifSearchKeyboard;"
@@ -74,9 +75,29 @@ private fun BytecodePatchContext.single(what: String, predicate: (ClassDef, Meth
     return mutable(found.single())
 }
 
-/** All runtime code (blocker, mod menu, voice, translate) lives in one extension. */
+/**
+ * All runtime code (blocker, mod menu, voice, translate) lives in one extension. Every patch depends on
+ * it, so it also carries what every build needs: the app icon walks through turning the keyboard on and
+ * choosing it (KeyboardPicker).
+ */
 internal val extensionPatch = bytecodePatch {
     extendWith("extensions/nogoogle.mpe")
+
+    execute {
+        // Gboard's launcher (transparent, so the setup shows over the home screen) waits for Google's
+        // Firebase before anything else, so without it the icon did nothing: ours runs right after
+        // onResume's super call and Gboard's (Firebase link, setup wizard, settings) is skipped.
+        val onResume = mutableClassDefBy("Lcom/google/android/libraries/inputmethod/launcher/LauncherActivity;")
+            .methods.single { it.name == "onResume" && it.params().isEmpty() }
+        val superCall = onResume.implementation!!.instructions.indexOfFirst {
+            it.opcode == Opcode.INVOKE_SUPER && ((it as ReferenceInstruction).reference as MethodReference).name == "onResume"
+        }
+        if (superCall < 0) throw PatchException("LauncherActivity.onResume: super call not found")
+        onResume.addInstructions(superCall + 1, """
+            invoke-static/range {p0 .. p0}, $KEYBOARD_PICKER->onLauncherResume(Landroid/app/Activity;)V
+            return-void
+        """)
+    }
 }
 
 /** Declares the settings activity (No-Google menu and Gboard patches page). */

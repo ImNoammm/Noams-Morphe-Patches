@@ -56,6 +56,7 @@ val removeNetworkAccessPatch = resourcePatch(
     default = true,
 ) {
     compatibleWith(COMPATIBILITY_GBOARD)
+    dependsOn(extensionPatch)
 
     execute {
         manifest { doc ->
@@ -101,6 +102,7 @@ val removeGoogleComponentsPatch = resourcePatch(
     default = true,
 ) {
     compatibleWith(COMPATIBILITY_GBOARD)
+    dependsOn(extensionPatch)
 
     execute {
         manifest { doc ->
@@ -144,6 +146,7 @@ val packageRenamePatch = resourcePatch(
     default = true,
 ) {
     compatibleWith(COMPATIBILITY_GBOARD)
+    dependsOn(extensionPatch)
 
     val packageName = stringOption(
         key = "packageName",
