@@ -25,10 +25,13 @@ import android.view.WindowInsets;
 import android.view.animation.AccelerateDecelerateInterpolator;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.ProgressBar;
 import android.widget.ScrollView;
+import android.widget.SeekBar;
 import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.window.OnBackInvokedDispatcher;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -40,9 +43,11 @@ import app.noam.extension.chesscom.Features;
 import app.noam.extension.chesscom.Utils;
 import app.noam.extension.chesscom.arcade.ArcadePreview;
 import app.noam.extension.chesscom.board.BoardColors;
+import app.noam.extension.chesscom.gamereview.GameReview;
 import app.noam.extension.chesscom.home.HomeLayout;
 import app.noam.extension.chesscom.home.HomeTabs;
-import app.noam.extension.chesscom.review.LichessReview;
+import app.noam.extension.chesscom.lichesspuzzle.LichessPuzzles;
+import app.noam.extension.chesscom.stockfish.Analysis;
 import app.noam.extension.chesscom.theme.Accent;
 import app.noam.extension.chesscom.theme.Amoled;
 
@@ -69,11 +74,17 @@ public final class MorpheSettingsActivity extends Activity {
     private View restartBar;
     private TextView restartButton;
     private ValueAnimator glow;
+    /** The welcome screens: which one is showing, and the button that goes on. */
+    private int welcomeStep;
+    private LinearLayout welcomeBar;
+    private TextView welcomeButton;
+    private static final String WELCOME_THANKS = "thanks", WELCOME_REVIEWS = "reviews", WELCOME_PUZZLES = "puzzles";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         page = getIntent().getStringExtra(EXTRA_PAGE);
+        if (savedInstanceState != null) welcomeStep = savedInstanceState.getInt("welcome_step");
 
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -89,6 +100,17 @@ public final class MorpheSettingsActivity extends Activity {
         list.setPadding(0, 0, 0, dp(16));
         scroll.addView(list);
         root.addView(scroll, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+
+        welcomeBar = new LinearLayout(this);
+        welcomeBar.setPadding(dp(16), dp(10), dp(16), dp(14));
+        welcomeButton = text("", 16, TEXT);
+        welcomeButton.setTypeface(Typeface.DEFAULT_BOLD);
+        welcomeButton.setGravity(Gravity.CENTER);
+        welcomeButton.setPadding(0, dp(14), 0, dp(14));
+        welcomeBar.addView(welcomeButton, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT));
+        root.addView(welcomeBar, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT));
 
         restartBar = restartBar();
         root.addView(restartBar, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
@@ -111,6 +133,11 @@ public final class MorpheSettingsActivity extends Activity {
             return insets;
         });
         setContentView(root);
+        // The system back goes a welcome screen back too (Android 13 and later; before that it closes them).
+        if (Features.PAGE_WELCOME.equals(page) && Build.VERSION.SDK_INT >= 33) {
+            getOnBackInvokedDispatcher().registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT,
+                this::goBack);
+        }
         render();
     }
 
@@ -133,13 +160,32 @@ public final class MorpheSettingsActivity extends Activity {
         super.onDestroy();
     }
 
+    @Override
+    protected void onSaveInstanceState(Bundle outState) {
+        super.onSaveInstanceState(outState);
+        outState.putInt("welcome_step", welcomeStep);
+    }
+
+    /** Back: a screen back on the welcome screens, otherwise this page closes. */
+    private void goBack() {
+        if (Features.PAGE_WELCOME.equals(page) && welcomeStep > 0) {
+            welcomeStep--;
+            render();
+        } else {
+            finish();
+        }
+    }
+
     private String title() {
         if (Features.PAGE_HOME.equals(page)) return "Home screen";
         if (Features.PAGE_TABS.equals(page)) return "Bottom bar";
         if (Features.PAGE_BOARD_COLORS.equals(page)) return "Board colors";
         if (Features.PAGE_ARCADE.equals(page)) return "Arcade animations";
         if (Features.PAGE_ACCENT.equals(page)) return "Accent color";
-        if (Features.PAGE_LICHESS.equals(page)) return "Review on Lichess";
+        if (Features.PAGE_STOCKFISH.equals(page)) return "Stockfish analysis";
+        if (Features.PAGE_PUZZLES.equals(page)) return "Lichess Puzzles";
+        if (Features.PAGE_GAME_REVIEW.equals(page)) return "Game Review";
+        if (Features.PAGE_WELCOME.equals(page)) return "Welcome";
         return TITLE;
     }
 
@@ -154,6 +200,13 @@ public final class MorpheSettingsActivity extends Activity {
         bar.setBackgroundColor(backgroundColor);
         restartBar.setBackgroundColor(cardColor);
         restartBar.setVisibility(restartPending ? View.VISIBLE : View.GONE);
+        welcomeBar.setBackgroundColor(backgroundColor);
+        welcomeBar.setVisibility(Features.PAGE_WELCOME.equals(page) ? View.VISIBLE : View.GONE);
+        GradientDrawable next = new GradientDrawable();
+        next.setColor(accent | 0xFF000000);
+        next.setCornerRadius(dp(14));
+        welcomeButton.setBackground(next);
+        welcomeButton.setTextColor(contrast(accent));
         GradientDrawable button = new GradientDrawable();
         button.setColor(accent | 0xFF000000);
         button.setCornerRadius(dp(18));
@@ -168,7 +221,10 @@ public final class MorpheSettingsActivity extends Activity {
         else if (Features.PAGE_BOARD_COLORS.equals(page)) renderBoardColors();
         else if (Features.PAGE_ARCADE.equals(page)) renderArcade();
         else if (Features.PAGE_ACCENT.equals(page)) renderAccent();
-        else if (Features.PAGE_LICHESS.equals(page)) renderLichess();
+        else if (Features.PAGE_STOCKFISH.equals(page)) renderStockfish();
+        else if (Features.PAGE_PUZZLES.equals(page)) renderPuzzles();
+        else if (Features.PAGE_GAME_REVIEW.equals(page)) renderGameReview();
+        else if (Features.PAGE_WELCOME.equals(page)) renderWelcome();
         else renderMain();
     }
 
@@ -386,18 +442,317 @@ public final class MorpheSettingsActivity extends Activity {
         restartNeeded();
     }
 
-    private void renderLichess() {
-        list.addView(header("When"));
-        LinearLayout group = card();
-        list.addView(group, cardParams());
-        group.addView(switchRow("Always use Lichess",
-            "When off, chess.com's own Game Review is used while you have a free review left, and "
-                + "Lichess once it's used up.",
-            LichessReview.always(), LichessReview::setAlways));
-        list.addView(caption("Your game is imported to lichess.org (no account needed) and opens in a "
-            + "browser inside the app, with Lichess's free analysis: the engine's evaluation, best "
-            + "moves, inaccuracies, mistakes and blunders. \"Open in browser\" moves it to your own "
-            + "browser."));
+    private void renderStockfish() {
+        list.addView(header("Show"));
+        LinearLayout show = card();
+        list.addView(show, cardParams());
+        show.addView(switchRow("Best-move arrows", "Blue arrows for Stockfish's best lines.", Analysis.arrows(),
+            Analysis::setArrows));
+        show.addView(divider(16));
+        show.addView(switchRow("Eval bar", "Who's better, and by how much, on the board's left edge.", Analysis.bar(),
+            Analysis::setBar));
+
+        list.addView(header("Lines"));
+        list.addView(segments(new String[]{"1", "2", "3"}, Analysis.lines() - 1, index -> Analysis.setLines(index + 1)),
+            cardParams());
+
+        list.addView(header("Depth"));
+        String[] depths = new String[Analysis.DEPTHS.length];
+        for (int i = 0; i < depths.length; i++) depths[i] = Analysis.DEPTH_NAMES[i] + " (" + Analysis.DEPTHS[i] + ")";
+        list.addView(segments(depths, Analysis.depthIndex(), Analysis::setDepthIndex), cardParams());
+
+        list.addView(caption("Stockfish draws its arrows on finished games, the analysis boards, the game "
+            + "explorer and Game Review; in a review by Lichess, on the moves Lichess didn't mark. Its eval "
+            + "bar only shows where chess.com has none, so Game Review and the analysis board keep chess.com's "
+            + "own. It never shows while a game is being played or in puzzles. Deeper searches take longer and "
+            + "use more battery."));
+    }
+
+    private void renderGameReview() {
+        lichessMethodChoice();
+        // Local Stockfish needs the engine, which comes with the Stockfish analysis patch.
+        boolean stockfish = Features.stockfishPatched();
+        if (stockfish) {
+            reviewDepthChoice();
+            list.addView(header("Local Stockfish engines"));
+            list.addView(segments(new String[]{"Auto", "1", "2", "3", "4"}, GameReview.reviewEnginesSetting(),
+                GameReview::setReviewEngines), cardParams());
+            list.addView(caption("Stockfish 19 engines working on a review at once. More finish sooner but use "
+                + "more memory and battery; Auto runs " + GameReview.reviewEngines(this) + " on this phone. "
+                + "chess.com's own Game Review settings (Chess Engine, Analysis Depth) only change Review on "
+                + "chess.com; its Torch Human engine only runs on chess.com's servers."));
+        }
+
+        list.addView(header("Saved reviews"));
+        int saved = GameReview.savedReviews();
+        if (saved > 0) {
+            LinearLayout reviews = card();
+            list.addView(reviews, cardParams());
+            reviews.addView(actionRow("Delete saved reviews", saved == 1 ? "1 game" : saved + " games", () -> {
+                GameReview.deleteSavedReviews();
+                render();
+            }));
+        }
+        list.addView(caption(stockfish
+            ? "A game you review with Local Stockfish or Lichess's servers is saved on this phone and opens "
+                + "straight away the next time. Choosing a deeper depth than it was saved with analyses it again."
+            : "A game you review with Lichess's servers is saved on this phone and opens straight away the next time."));
+    }
+
+    private void lichessMethodChoice() {
+        list.addView(header("Analyze with Lichess"));
+        boolean board = GameReview.LICHESS_BOARD.equals(GameReview.lichessMethod());
+        list.addView(segments(new String[]{"Lichess's servers", "Analysis board"}, board ? 1 : 0,
+            index -> GameReview.setLichessMethod(index == 1 ? GameReview.LICHESS_BOARD : GameReview.LICHESS_SERVERS)),
+            cardParams());
+        list.addView(caption(board
+            ? "Your game is imported to Lichess (no account needed) and opens on Lichess's own analysis "
+                + "board inside the app, where Lichess's engine looks at it in your phone's browser."
+            : "Lichess's servers analyse your game for your Lichess account and the review shows in "
+                + "chess.com's own screen, with Lichess's marks. You log in to Lichess once. Lichess "
+                + "allows 40 analyses a day."));
+    }
+
+    /** How hard Local Stockfish looks: each depth is a budget Lichess's own servers use. */
+    private void reviewDepthChoice() {
+        list.addView(header("Local Stockfish depth"));
+        int depth = GameReview.reviewDepthIndex();
+        list.addView(segments(GameReview.REVIEW_DEPTH_NAMES, depth, GameReview::setReviewDepthIndex), cardParams());
+        String[] meaning = {
+            "The quickest: 100,000 positions a move.",
+            "300,000 positions a move, as Lichess's own automatic analysis.",
+            "1,000,000 positions a move, what Lichess spends when you ask it to analyse, so the numbers "
+                + "match Analyze with Lichess. About three times as long as Standard.",
+            "5,000,000 positions a move, the most. About five times as long as Deep.",
+        };
+        list.addView(caption(meaning[depth] + " Local Stockfish works offline on this phone and marks moves "
+            + "the Lichess way."));
+    }
+
+    private void renderPuzzles() {
+        list.addView(header("Your rating"));
+        LinearLayout rating = card();
+        list.addView(rating, cardParams());
+        TextView value = text(LichessPuzzles.ratingText(), 34, TEXT);
+        value.setTypeface(Typeface.DEFAULT_BOLD);
+        value.setPadding(dp(16), dp(14), dp(16), 0);
+        rating.addView(value);
+        TextView record = text(LichessPuzzles.solvedCount() + " solved, " + LichessPuzzles.failedCount() + " failed",
+            13, TEXT_SECONDARY);
+        record.setPadding(dp(16), dp(2), dp(16), dp(12));
+        rating.addView(record);
+        rating.addView(divider(16));
+        rating.addView(actionRow("Reset rating", "Start over from 1500 and let it settle again, as on a new Lichess account.",
+            () -> {
+                LichessPuzzles.resetRating();
+                render();
+            }));
+
+        list.addView(header("Puzzles"));
+        int target = LichessPuzzles.targetRating();
+        list.addView(segments(new String[]{"Match my rating", "Choose a rating"}, target > 0 ? 1 : 0,
+            index -> LichessPuzzles.setTargetRating(index == 1 ? Math.max(target, LichessPuzzles.rating()) : 0)),
+            cardParams());
+        if (target > 0) list.addView(ratingSlider(target), cardParams(8));
+
+        list.addView(header("Offline puzzles"));
+        list.addView(offlinePuzzles(), cardParams());
+        list.addView(caption("Puzzles come from Lichess's open puzzle database and are solved offline in "
+            + "chess.com's own puzzle screen. Your rating is worked out on this phone the way Lichess "
+            + "rates puzzles (Glicko-2); a ? means it is still settling. Nothing is sent to chess.com."));
+    }
+
+    /** What is on the phone, a download's progress, or the packs to download. */
+    private LinearLayout offlinePuzzles() {
+        LinearLayout offline = card();
+        Integer progress = LichessPuzzles.downloadProgress();
+        int stored = LichessPuzzles.storedPuzzles();
+        String status = progress != null ? "Downloading…" + (progress >= 0 ? " " + progress + "%" : "")
+            : stored == 0 ? "None on this phone yet" : String.format(Locale.ROOT, "%,d puzzles on this phone, %,d solved",
+                stored, LichessPuzzles.storedSolved());
+        TextView statusText = text(status, 15, TEXT);
+        statusText.setPadding(dp(16), dp(14), dp(16), dp(14));
+        offline.addView(statusText);
+        if (progress != null) {
+            ProgressBar bar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+            bar.setIndeterminate(progress < 0);
+            bar.setMax(100);
+            bar.setProgress(Math.max(0, progress));
+            bar.setProgressTintList(ColorStateList.valueOf(accent | 0xFF000000));
+            bar.setIndeterminateTintList(ColorStateList.valueOf(accent | 0xFF000000));
+            LinearLayout.LayoutParams barParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            barParams.setMargins(dp(16), 0, dp(16), dp(14));
+            offline.addView(bar, barParams);
+            list.postDelayed(this::render, 500);
+        } else {
+            String[] names = LichessPuzzles.packNames();
+            String[] sizes = LichessPuzzles.packSizes();
+            for (int i = 0; i < names.length; i++) {
+                int pack = i;
+                offline.addView(divider(16));
+                offline.addView(actionRow("Download " + names[i] + " puzzles", sizes[i], () -> {
+                    LichessPuzzles.download(pack);
+                    render();
+                }));
+            }
+            if (stored > 0) {
+                offline.addView(divider(16));
+                offline.addView(actionRow("Delete puzzles", "Frees the space; your rating stays.", () -> {
+                    LichessPuzzles.deletePuzzles();
+                    render();
+                }));
+            }
+        }
+        return offline;
+    }
+
+    /** The welcome screens' steps, for the features this app was patched with. */
+    private List<String> welcomeSteps() {
+        List<String> steps = new ArrayList<>();
+        steps.add(WELCOME_THANKS);
+        if (Features.gameReviewPatched()) steps.add(WELCOME_REVIEWS);
+        if (Features.lichessPuzzlesPatched()) steps.add(WELCOME_PUZZLES);
+        return steps;
+    }
+
+    private void renderWelcome() {
+        List<String> steps = welcomeSteps();
+        welcomeStep = Math.max(0, Math.min(welcomeStep, steps.size() - 1));
+        String step = steps.get(welcomeStep);
+        if (steps.size() > 1) list.addView(stepDots(steps.size(), welcomeStep));
+        if (WELCOME_THANKS.equals(step)) {
+            try {
+                ImageView appIcon = new ImageView(this);
+                appIcon.setImageDrawable(getPackageManager().getApplicationIcon(getApplicationInfo()));
+                LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(dp(72), dp(72));
+                params.setMargins(dp(28), dp(24), 0, 0);
+                list.addView(appIcon, params);
+            } catch (Throwable ignored) {
+                // No icon to show.
+            }
+            list.addView(headline("Thanks for patching!"));
+            list.addView(lead("Noam's Patches is ready. Everything it adds is in More → Noam's Patches, "
+                + "where each part can be turned on or off and set up."));
+            if (steps.size() > 1) list.addView(lead("First, a couple of quick choices."));
+        } else if (WELCOME_REVIEWS.equals(step)) {
+            // What these screens show is what is used, so the Lichess method is set from the start.
+            if (GameReview.lichessMethod() == null) GameReview.setLichessMethod(GameReview.LICHESS_SERVERS);
+            list.addView(headline("Game reviews"));
+            if (Features.stockfishPatched()) {
+                list.addView(lead("Game Review asks who reviews each game: chess.com, Local Stockfish on this "
+                    + "phone (offline) or Lichess (online). Local Stockfish and Lichess mark moves the Lichess way."));
+                reviewDepthChoice();
+            } else {
+                list.addView(lead("Game Review asks who reviews each game: chess.com or Lichess (online). Lichess's "
+                    + "reviews show in chess.com's own screen, with Lichess's marks."));
+            }
+            lichessMethodChoice();
+            list.addView(caption("You can change these any time in More → Noam's Patches → Game Review."));
+        } else {
+            list.addView(headline("Lichess puzzles"));
+            list.addView(lead("Puzzles from Lichess are solved offline in chess.com's own puzzle screen, with "
+                + "a rating worked out on this phone. Download some now? You can also skip this."));
+            list.addView(header("Offline puzzles"));
+            list.addView(offlinePuzzles(), cardParams());
+            list.addView(caption("You can download more or delete them any time in More → Noam's "
+                + "Patches → Lichess Puzzles."));
+        }
+        boolean last = welcomeStep == steps.size() - 1;
+        welcomeButton.setText(last ? "Done" : "Next");
+        welcomeButton.setOnClickListener(view -> {
+            if (last) {
+                finish();
+            } else {
+                welcomeStep++;
+                render();
+            }
+        });
+    }
+
+    /** Where the welcome screens are: a dot for each, the current one in the accent colour. */
+    private View stepDots(int count, int current) {
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER);
+        row.setPadding(0, dp(8), 0, 0);
+        for (int i = 0; i < count; i++) {
+            View dot = new View(this);
+            GradientDrawable shape = new GradientDrawable();
+            shape.setShape(GradientDrawable.OVAL);
+            shape.setColor(i == current ? accent | 0xFF000000 : lineColor);
+            dot.setBackground(shape);
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(dp(8), dp(8));
+            params.setMargins(dp(4), 0, dp(4), 0);
+            row.addView(dot, params);
+        }
+        return row;
+    }
+
+    private TextView headline(String value) {
+        TextView headline = text(value, 28, TEXT);
+        headline.setTypeface(Typeface.DEFAULT_BOLD);
+        headline.setPadding(dp(28), dp(20), dp(28), dp(6));
+        return headline;
+    }
+
+    private TextView lead(String value) {
+        TextView lead = text(value, 16, TEXT_SECONDARY);
+        lead.setPadding(dp(28), dp(8), dp(28), dp(4));
+        lead.setLineSpacing(dp(2), 1f);
+        return lead;
+    }
+
+    /** A rating picker for the puzzles, 400 to 3000 in steps of 25. */
+    private View ratingSlider(int rating) {
+        LinearLayout row = card();
+        row.setPadding(dp(16), dp(12), dp(16), dp(12));
+        TextView label = text("Puzzles near " + rating, 15, TEXT);
+        row.addView(label);
+        SeekBar slider = new SeekBar(this);
+        slider.setMax((3000 - 400) / 25);
+        slider.setProgress((Math.max(400, Math.min(3000, rating)) - 400) / 25);
+        slider.setProgressTintList(ColorStateList.valueOf(accent | 0xFF000000));
+        slider.setThumbTintList(ColorStateList.valueOf(accent | 0xFF000000));
+        slider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar bar, int value, boolean fromUser) {
+                label.setText("Puzzles near " + (400 + value * 25));
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar bar) {
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar bar) {
+                LichessPuzzles.setTargetRating(400 + bar.getProgress() * 25);
+            }
+        });
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        params.topMargin = dp(8);
+        row.addView(slider, params);
+        return row;
+    }
+
+    private View actionRow(String title, String summary, Runnable action) {
+        LinearLayout row = new LinearLayout(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(16), dp(12), dp(16), dp(12));
+        row.setMinimumHeight(dp(56));
+        row.setBackground(ripple());
+        TextView titleText = text(title, 16, accent);
+        LinearLayout texts = new LinearLayout(this);
+        texts.setOrientation(LinearLayout.VERTICAL);
+        texts.addView(titleText);
+        if (summary != null) {
+            TextView detail = text(summary, 13, TEXT_SECONDARY);
+            detail.setPadding(0, dp(2), 0, 0);
+            texts.addView(detail);
+        }
+        row.addView(texts, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        row.setOnClickListener(view -> action.run());
+        return row;
     }
 
     /** Two ranks of a board in the given colours. */
@@ -567,6 +922,38 @@ public final class MorpheSettingsActivity extends Activity {
 
     private interface OnChecked {
         void onChecked(boolean checked);
+    }
+
+    private interface OnIndex {
+        void onIndex(int index);
+    }
+
+    /** One of a few choices, as a row of pills. */
+    private View segments(String[] names, int selected, OnIndex onIndex) {
+        LinearLayout row = card();
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setPadding(dp(6), dp(6), dp(6), dp(6));
+        for (int i = 0; i < names.length; i++) {
+            int index = i;
+            boolean chosen = i == selected;
+            TextView pill = text(names[i], 14, chosen ? contrast(accent) : TEXT);
+            pill.setGravity(Gravity.CENTER);
+            pill.setPadding(dp(8), dp(10), dp(8), dp(10));
+            if (chosen) {
+                GradientDrawable shape = new GradientDrawable();
+                shape.setColor(accent | 0xFF000000);
+                shape.setCornerRadius(dp(10));
+                pill.setBackground(shape);
+            } else {
+                pill.setBackground(ripple());
+            }
+            pill.setOnClickListener(view -> {
+                onIndex.onIndex(index);
+                render();
+            });
+            row.addView(pill, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        }
+        return row;
     }
 
     private View featureRow(Features.Feature feature) {
@@ -792,7 +1179,7 @@ public final class MorpheSettingsActivity extends Activity {
         content.setMinimumHeight(dp(56));
 
         View back = backButton();
-        back.setOnClickListener(view -> finish());
+        back.setOnClickListener(view -> goBack());
         content.addView(back, new LinearLayout.LayoutParams(dp(page == null ? 48 : 56), dp(56)));
 
         TextView title = text(titleText, 20, TEXT);

@@ -7,7 +7,6 @@ import java.util.regex.Pattern;
 
 import app.noam.extension.chesscom.Features;
 import app.noam.extension.chesscom.Utils;
-import app.noam.extension.chesscom.review.LichessReview;
 
 /**
  * Limits show as toasts instead of Premium offers. The app decides a limit before asking for the
@@ -22,8 +21,6 @@ public final class Upsells {
      * dialog was replaced by a toast (or dropped), so the caller must not show it.
      */
     public static boolean interceptDialog(Object direction, Object fragmentManager) {
-        // Review on Lichess goes first: the review limit then opens Lichess, not a toast.
-        if (LichessReview.onDialog(direction, fragmentManager)) return true;
         if (direction == null || !Features.isEnabled(Features.LIMIT_TOASTS)) return false;
         try {
             String description = String.valueOf(direction);
@@ -62,7 +59,6 @@ public final class Upsells {
      * on its own (Game Review, Play Coach) become a toast; offers the user opened on purpose stay.
      */
     public static boolean interceptScreen(Object activity, Object directions) {
-        if (LichessReview.onScreen(activity, directions)) return true;
         if (directions == null || !Features.isEnabled(Features.LIMIT_TOASTS)) return false;
         try {
             String description = String.valueOf(directions);

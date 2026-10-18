@@ -39,3 +39,16 @@ internal object HomeToolbarStateToStringFingerprint : Fingerprint(
     parameters = listOf(),
     strings = listOf("LoggedIn(userAvatarUrl=", ", shouldShowDiamond="),
 )
+
+/**
+ * SessionStore.K(): the account's PremiumStatus tier, read from the session's premium_status
+ * field. Every tier check in the app (c() = "has any premium tier", x() = isAtLeastGold, and
+ * any screen that reads the tier directly) goes through this one default method, which
+ * SharedPreferencesSessionStore does not override.
+ */
+internal object SessionStoreGetPremiumStatusFingerprint : Fingerprint(
+    definingClass = "Lcom/chess/net/v1/users/SessionStore;",
+    name = "K",
+    parameters = listOf(),
+    returnType = "Lcom/chess/entities/PremiumStatus;",
+)

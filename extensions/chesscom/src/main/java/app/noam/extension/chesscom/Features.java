@@ -20,14 +20,23 @@ public final class Features {
     public static final String ACCENT = "accent";
     public static final String NO_ADS = "no_ads";
     public static final String NO_RATING_PROMPTS = "no_rating_prompts";
-    public static final String LICHESS_REVIEW = "lichess_review";
+    public static final String STOCKFISH = "stockfish";
+    public static final String LICHESS_PUZZLES = "lichess_puzzles";
+    public static final String BOT_UNLOCK = "bot_unlock";
+    public static final String UNLIMITED_COACH = "unlimited_coach";
+    public static final String PREMIUM_UNLOCK = "premium_unlock";
+    public static final String GAME_REVIEW = "game_review";
 
     public static final String PAGE_HOME = "home";
     public static final String PAGE_TABS = "tabs";
     public static final String PAGE_BOARD_COLORS = "board_colors";
-    public static final String PAGE_LICHESS = "lichess";
     public static final String PAGE_ARCADE = "arcade";
     public static final String PAGE_ACCENT = "accent";
+    public static final String PAGE_STOCKFISH = "stockfish";
+    public static final String PAGE_PUZZLES = "lichess_puzzles";
+    public static final String PAGE_GAME_REVIEW = "game_review";
+    /** The screens shown the first time the patched app opens. */
+    public static final String PAGE_WELCOME = "welcome";
 
     public static final String[] SECTIONS = {"Board", "Look", "Games", "Less clutter"};
 
@@ -91,10 +100,32 @@ public final class Features {
             "The custom time slider goes below one minute: 10, 15, 20, 30 and 45 seconds, with or "
                 + "without increment.",
             null, Features::shortTimeControlsPatched),
-        new Feature(LICHESS_REVIEW, "Games", "glyph_tool_magnifier_checker_1", "Review on Lichess",
-            "Game Review opens your game on Lichess, imported and with Lichess's analysis, in a "
-                + "browser inside the app.",
-            PAGE_LICHESS, Features::lichessReviewPatched),
+        new Feature(STOCKFISH, "Games", "glyph_device_chip", "Stockfish analysis",
+            "Stockfish 19 on your phone, offline: best-move arrows on finished games, the analysis boards, "
+                + "the game explorer and Game Review (in a Lichess review, on the moves Lichess didn't mark), "
+                + "and an eval bar where chess.com has none of its own. Never during a game or in puzzles.",
+            PAGE_STOCKFISH, Features::stockfishPatched),
+        new Feature(LICHESS_PUZZLES, "Games", "glyph_game_type_puzzle", "Lichess Puzzles",
+            "Puzzles from Lichess is the Puzzles tab's big button: Lichess's puzzles in chess.com's "
+                + "own puzzle screen, rated on your phone the way Lichess rates them.",
+            PAGE_PUZZLES, Features::lichessPuzzlesPatched),
+        new Feature(BOT_UNLOCK, "Games", "glyph_device_computer_versus", "Unlock all bots",
+            "Every bot in Versus Bots can be played, including ones only Premium members may play.",
+            null, Features::botUnlockPatched),
+        new Feature(UNLIMITED_COACH, "Games", "glyph_game_lesson_student", "Unlimited Play Coach",
+            "Removes the one-free-game-per-day limit on Play Coach, a bot-only practice mode.",
+            null, Features::unlimitedCoachPatched),
+        new Feature(PREMIUM_UNLOCK, "Games", "glyph_membership_tier_diamond", "Unlock Premium content",
+            "The app's own premium-tier check always answers with the top tier, so content gated "
+                + "on it treats the account as a member. The server still decides what you may "
+                + "actually play online.",
+            null, Features::premiumUnlockPatched),
+        new Feature(GAME_REVIEW, "Games", "glyph_board_analysis", "Unlimited Game Review",
+            "Game Review asks who reviews: chess.com, Lichess's servers (with your Lichess account) or, "
+                + "with Stockfish analysis, Stockfish on your phone. The phone and Lichess both mark moves "
+                + "the Lichess way: ?! ? ??, accuracy and centipawn loss. Reviews are saved, so a game opens "
+                + "straight away the next time.",
+            PAGE_GAME_REVIEW, Features::gameReviewPatched),
         new Feature(LIMIT_TOASTS, "Less clutter", "glyph_message_bubble_fill_pair", "Limits as toasts",
             "When you reach a free limit (Game Review, puzzles, lessons, drills…) a short toast says "
                 + "so instead of a full-screen Premium offer. Promotional pop-ups are not shown.",
@@ -127,7 +158,12 @@ public final class Features {
     public static boolean accentPatched() { return false; }
     public static boolean noAdsPatched() { return false; }
     public static boolean noRatingPromptsPatched() { return false; }
-    public static boolean lichessReviewPatched() { return false; }
+    public static boolean stockfishPatched() { return false; }
+    public static boolean lichessPuzzlesPatched() { return false; }
+    public static boolean botUnlockPatched() { return false; }
+    public static boolean unlimitedCoachPatched() { return false; }
+    public static boolean premiumUnlockPatched() { return false; }
+    public static boolean gameReviewPatched() { return false; }
 
     public static List<Feature> patched() {
         List<Feature> list = new ArrayList<>();

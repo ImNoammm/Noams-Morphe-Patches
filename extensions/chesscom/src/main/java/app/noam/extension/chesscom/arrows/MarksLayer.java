@@ -3,8 +3,12 @@ package app.noam.extension.chesscom.arrows;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Path;
+import android.graphics.RectF;
+import android.graphics.Typeface;
 import android.view.View;
 import android.view.ViewGroup;
+
+import java.util.Locale;
 
 import app.noam.extension.chesscom.board.Board;
 import app.noam.extension.chesscom.board.BoardViews;
@@ -18,6 +22,8 @@ final class MarksLayer extends View {
     private static final float HEAD_LENGTH = 8 * 0.045f;
     private static final float HEAD_HALF_WIDTH = 8 * 0.065f / 2;
     private static final float TAIL_PADDING = 8 * 0.045f;
+    /** Stockfish's lines, best first: blue, fading for the weaker ones. */
+    private static final int[] ENGINE_COLORS = {0xCC1D6FD6, 0x801D6FD6, 0x501D6FD6};
 
     private final ViewGroup pieceView;
     private final View board;
@@ -26,6 +32,10 @@ final class MarksLayer extends View {
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Path path = new Path();
     private final Paint frame = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint bar = new Paint();
+    private final Paint pill = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint label = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final RectF rect = new RectF();
 
     MarksLayer(ViewGroup pieceView, View board, Arrows.Marks marks, boolean arrows) {
         super(pieceView.getContext());
@@ -38,6 +48,9 @@ final class MarksLayer extends View {
         paint.setStyle(Paint.Style.FILL);
         frame.setStyle(Paint.Style.STROKE);
         frame.setColor(Arrows.ARROW_COLOR);
+        pill.setColor(0xCC1E1D1B);
+        label.setColor(0xFFFFFFFF);
+        label.setTypeface(Typeface.DEFAULT_BOLD);
     }
 
     @Override
@@ -53,6 +66,12 @@ final class MarksLayer extends View {
             }
             return;
         }
+        int[][] engine = marks.engineMoves;
+        for (int i = engine.length - 1; i >= 0; i--) {
+            paint.setColor(ENGINE_COLORS[Math.min(i, ENGINE_COLORS.length - 1)]);
+            drawArrow(canvas, engine[i][0], engine[i][1], size, flip);
+        }
+        if (!Float.isNaN(marks.engineScore)) drawEval(canvas, size, flip);
         paint.setColor(Arrows.ARROW_COLOR);
         for (int[] arrow : marks.arrows) drawArrow(canvas, arrow[0], arrow[1], size, flip);
         if (marks.drawing) {
@@ -64,6 +83,42 @@ final class MarksLayer extends View {
         if (marks.drawing && marks.start != Board.NONE && marks.current != Board.NONE && marks.current != marks.start) {
             drawArrow(canvas, marks.start, marks.current, size, flip);
         }
+    }
+
+    /** A bar on the board's left edge, White's share growing from White's side, and the score. */
+    private void drawEval(Canvas canvas, float size, boolean flip) {
+        float height = size * 8, width = size * 0.16f;
+        float white = height * whiteShare();
+        bar.setColor(0xD92B2926);
+        canvas.drawRect(0, 0, width, height, bar);
+        bar.setColor(0xE6F2F2F2);
+        if (flip) canvas.drawRect(0, 0, width, white, bar);
+        else canvas.drawRect(0, height - white, width, height, bar);
+
+        String text = scoreText();
+        label.setTextSize(size * 0.26f);
+        float pad = size * 0.08f, left = width + size * 0.06f, top = size * 0.06f;
+        rect.set(left, top, left + label.measureText(text) + 2 * pad, top + label.getTextSize() + 1.4f * pad);
+        canvas.drawRoundRect(rect, rect.height() / 2, rect.height() / 2, pill);
+        canvas.drawText(text, left + pad, top + 0.7f * pad - label.ascent(), label);
+    }
+
+    /** White's winning chances, 0 to 1, on Lichess's curve. */
+    private float whiteShare() {
+        float score = marks.engineScore;
+        if (marks.engineMate != 0) return marks.engineMate > 0 ? 1f : 0f;
+        if (Math.abs(score) >= 90) return score > 0 ? 1f : 0f;
+        double chances = 2 / (1 + Math.exp(-0.368208 * score)) - 1;
+        return (float) (chances + 1) / 2;
+    }
+
+    private String scoreText() {
+        int mate = marks.engineMate;
+        if (mate != 0) return mate > 0 ? "M" + mate : "-M" + -mate;
+        float score = marks.engineScore;
+        if (marks.engineOver) return Math.abs(score) >= 90 ? "#" : "0.0";
+        if (Math.abs(score) < 0.05f) return "0.0";
+        return String.format(Locale.ROOT, "%+.1f", score);
     }
 
     private void drawArrow(Canvas canvas, int from, int to, float size, boolean flip) {

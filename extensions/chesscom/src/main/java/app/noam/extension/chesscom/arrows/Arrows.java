@@ -18,6 +18,7 @@ import app.noam.extension.chesscom.Features;
 import app.noam.extension.chesscom.Utils;
 import app.noam.extension.chesscom.board.Board;
 import app.noam.extension.chesscom.board.BoardViews;
+import app.noam.extension.chesscom.stockfish.Analysis;
 
 /**
  * Arrows and marked squares like the website's right-click ones. While drawing is on, a drag draws
@@ -35,6 +36,11 @@ public final class Arrows {
         boolean drawing;
         int start = Board.NONE;
         int current = Board.NONE;
+        /** Stockfish's lines (from and to squares, best first) and score; NaN when there is none. */
+        int[][] engineMoves = new int[0][];
+        float engineScore = Float.NaN;
+        int engineMate;
+        boolean engineOver;
 
         boolean isEmpty() {
             return arrows.isEmpty() && squares.isEmpty();
@@ -73,9 +79,14 @@ public final class Arrows {
         return Features.arrowsPatched() && Features.isEnabled(Features.ARROWS);
     }
 
+    /** The marks layers carry Stockfish's arrows and eval bar too. */
+    private static boolean layersWanted() {
+        return enabled() || Analysis.enabled();
+    }
+
     /** The newer (v2) board, once built: its piece view gets the marks layers. */
     public static void attachBoard(ViewGroup board) {
-        if (board == null || !enabled()) return;
+        if (board == null || !layersWanted()) return;
         for (int i = 0; i < board.getChildCount(); i++) {
             View child = board.getChildAt(i);
             if (child instanceof ViewGroup && BoardViews.V2_PIECES.equals(child.getClass().getName())) {
@@ -87,7 +98,7 @@ public final class Arrows {
 
     /** Called once a board's piece view has its layers: adds the marks layers. */
     public static void attach(ViewGroup pieceView) {
-        if (pieceView == null || !enabled()) return;
+        if (pieceView == null || !layersWanted()) return;
         try {
             Object host = BoardViews.host(pieceView);
             if (!(host instanceof View) || MARKS.containsKey(host)) return;
@@ -98,6 +109,8 @@ public final class Arrows {
             // Marked squares under the pieces; arrows over the resting pieces, as on the website.
             pieceView.addView(squares, 0);
             pieceView.addView(arrows, BoardViews.indexUnderMovingPieces(pieceView));
+            // The v2 board adds its pieces later, on top; a higher Z keeps the arrows over them.
+            if (BoardViews.V2_PIECES.equals(pieceView.getClass().getName())) arrows.setZ(1f);
             BoardViews.fill(pieceView, squares);
             BoardViews.fill(pieceView, arrows);
             marks.layers.add(new WeakReference<>(squares));
@@ -151,6 +164,25 @@ public final class Arrows {
         int file = flip ? 7 - column : column;
         int rank = flip ? row : 7 - row;
         return file + 8 * rank;
+    }
+
+    /** Stockfish's result for the position on the board of {@code screen}. */
+    public static void showEngine(View screen, int[][] moves, float score, int mate, boolean over) {
+        Marks marks = marksNear(screen);
+        if (marks == null) return;
+        marks.engineMoves = moves;
+        marks.engineScore = score;
+        marks.engineMate = mate;
+        marks.engineOver = over;
+        marks.invalidate();
+    }
+
+    public static void clearEngine(View screen) {
+        Marks marks = marksNear(screen);
+        if (marks == null || (marks.engineMoves.length == 0 && Float.isNaN(marks.engineScore))) return;
+        marks.engineMoves = new int[0][];
+        marks.engineScore = Float.NaN;
+        marks.invalidate();
     }
 
     static void register(ArrowsButton button) {

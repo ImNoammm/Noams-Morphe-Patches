@@ -84,7 +84,7 @@ public final class TimeControls {
     private static String secondsText(int seconds) {
         Context context = Utils.context();
         if (context != null) {
-            int plural = context.getResources().getIdentifier("x_sec", "plurals", context.getPackageName());
+            int plural = context.getResources().getIdentifier("x_sec", "plurals", Utils.resourcePackage(context));
             if (plural != 0) {
                 try {
                     return context.getResources().getQuantityString(plural, seconds, seconds);
@@ -97,7 +97,7 @@ public final class TimeControls {
     }
 
     private static String format(Context context, String name, String fallback, Object... args) {
-        int id = context.getResources().getIdentifier(name, "string", context.getPackageName());
+        int id = context.getResources().getIdentifier(name, "string", Utils.resourcePackage(context));
         return id == 0 ? String.format(fallback, args) : context.getString(id, args);
     }
 

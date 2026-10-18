@@ -15,12 +15,14 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
+import app.noam.extension.chesscom.settings.Welcome;
 import app.noam.extension.chesscom.theme.Recolor;
 
 public final class Utils {
     public static final String TAG = "MorpheChessCom";
 
     private static Application application;
+    private static String resourcePackage;
     private static WeakReference<Activity> resumedActivity = new WeakReference<>(null);
     private static final List<WeakReference<Activity>> LIVE_ACTIVITIES = new ArrayList<>();
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
@@ -40,6 +42,19 @@ public final class Utils {
 
     public static Activity resumedActivity() {
         return resumedActivity.get();
+    }
+
+    /** The resumed activity, else the newest one still alive (one being created), or null. */
+    public static Activity topActivity() {
+        Activity resumed = resumedActivity.get();
+        if (resumed != null) return resumed;
+        synchronized (LIVE_ACTIVITIES) {
+            for (int i = LIVE_ACTIVITIES.size() - 1; i >= 0; i--) {
+                Activity activity = LIVE_ACTIVITIES.get(i).get();
+                if (activity != null && !activity.isFinishing()) return activity;
+            }
+        }
+        return null;
     }
 
     public static Activity activityOwning(Object fragmentManager) {
@@ -77,7 +92,7 @@ public final class Utils {
         Context c = application;
         if (c == null) return fallback;
         try {
-            int id = c.getResources().getIdentifier(name, "string", c.getPackageName());
+            int id = c.getResources().getIdentifier(name, "string", resourcePackage(c));
             return id == 0 ? fallback : c.getString(id);
         } catch (Throwable t) {
             return fallback;
@@ -87,7 +102,22 @@ public final class Utils {
     public static int resourceId(String name, String type) {
         Context c = application;
         if (c == null) return 0;
-        return c.getResources().getIdentifier(name, type, c.getPackageName());
+        return c.getResources().getIdentifier(name, type, resourcePackage(c));
+    }
+
+    /** The package the app's resources live under, which a renamed clone may keep as com.chess. */
+    public static String resourcePackage(Context c) {
+        if (resourcePackage == null) {
+            String name = c.getPackageName();
+            try {
+                int label = c.getApplicationInfo().labelRes;
+                if (label != 0) name = c.getResources().getResourcePackageName(label);
+            } catch (Throwable ignored) {
+                // The package's own name, then.
+            }
+            resourcePackage = name;
+        }
+        return resourcePackage;
     }
 
     public static int dp(float value) {
@@ -123,6 +153,7 @@ public final class Utils {
         @Override
         public void onActivityResumed(Activity activity) {
             resumedActivity = new WeakReference<>(activity);
+            Welcome.onScreenShown(activity);
         }
 
         @Override

@@ -14,9 +14,13 @@
   <a href="https://www.buymeacoffee.com/Noamm"><img alt="Buy Me A Coffee" src="https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png"></a>
 </p>
 
+
 These are the patches I make for apps I use, all in one [Morphe](https://morphe.software) source. Add it to
 Morphe Manager once and you can patch any app here right on your phone. When I add patches for another app,
 they show up in the same source.
+
+
+## [Open this link to add this repo to Morphe](https://morphe.software/add-source?github=ImNoammm/Noams-Morphe-Patches&name=Noam%27s%20Morphe%20Patches)
 
 ## What's in it
 
@@ -24,9 +28,12 @@ Right now it has patches for these apps:
 
 - Chess.com 4.10.18: arrows and marked squares in every game, like on the website. Your own board colours and
   accent colour, pure black backgrounds and the website's Arcade animations. Pick what Home and the bottom bar
-  show, play time controls under a minute and send a game to Lichess for review. No ads, rating prompts or Premium
-  upsells. Nothing gets unlocked, though: when you hit a free limit you get a short toast instead of a Premium
-  screen. You turn it all on and off under More, Noam's Patches.
+  show and play time controls under a minute. Game Review asks who reviews each game: chess.com, Lichess with your
+  Lichess account, or Stockfish 19 right on your phone, offline and with no daily limit. The Stockfish and Lichess
+  reviews are still in beta. Stockfish also shows its best moves on finished games and the analysis boards, and
+  Lichess's puzzles play offline in chess.com's own puzzle screen. Every bot can be played, Play Coach has no daily limit and content the app itself keeps for
+  Premium opens up. No ads, rating prompts or Premium upsells, and a clone option installs it next to the real
+  app. You turn it all on and off under More, Noam's Patches.
 - Block Blast 10.8.1: Classic trays are dealt by the iOS version's own game code, which runs inside the app, and
   you get the iOS version's colour, block, menu and animation themes and its extra effects. No ads, no revive
   offer, no impossible trays, a quicker game over and an optional fake best score that keeps your real one
@@ -57,6 +64,9 @@ Each app needs the version listed above, and you have to start from the stock ap
 patched doesn't work, so if Manager picks your installed patched app, choose the original APK instead. Morphe
 Manager signs what it patches with its own key, so if the app is already installed with a different signature,
 like the Play Store version, uninstall it first.
+
+Chess.com's Stockfish analysis patch downloads the official Stockfish 19 (80 MB) from Stockfish's GitHub while Manager
+patches, so patching chess.com with it needs internet.
 
 After you install Gboard, tap its app icon: it takes you to turn the keyboard on and then to choose it, one step at
 a time. Its voice and translation models download in No-Google settings. Downloads and GIFs go through the helper
@@ -94,6 +104,12 @@ jar at `~/gb/morphe-desktop.jar` and sign the helper with the keystore in `KEYST
 - Geocaching's map search and cache pages read geocaching.com the way [c:geo](https://github.com/cgeo/cgeo) does,
   and some of its page patterns come from c:geo (Apache-2.0). Its map layers come from OpenStreetMap, OpenTopoMap
   and Esri.
+- Parts of the chess.com Stockfish analysis, Game Review, Lichess puzzles, bot and Play Coach patches and the clone
+  option come from [PrathxmOp/Prathxm-Patches](https://github.com/PrathxmOp/Prathxm-Patches) (GPL-3.0).
+- chess.com's Stockfish analysis runs [Stockfish](https://github.com/official-stockfish/Stockfish) 19 (GPL-3.0),
+  the official arm64 build, which isn't in this repo or the bundle. Its Lichess puzzles come from the
+  [Lichess puzzle database](https://database.lichess.org/#puzzles) and its opening names from
+  [lichess-org/chess-openings](https://github.com/lichess-org/chess-openings), both CC0.
 - Block Blast is Hungry Studio's game. The iOS generation patch runs code from its iOS version.
 
 ## License

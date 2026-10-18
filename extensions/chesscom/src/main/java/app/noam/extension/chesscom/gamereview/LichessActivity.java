@@ -1,7 +1,8 @@
-package app.noam.extension.chesscom.review;
+package app.noam.extension.chesscom.gamereview;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.content.Context;
 import android.content.Intent;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
@@ -13,6 +14,7 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowInsets;
+import android.webkit.RenderProcessGoneDetail;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
@@ -24,6 +26,8 @@ import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.window.OnBackInvokedDispatcher;
+
+import androidx.annotation.RequiresApi;
 
 import org.json.JSONObject;
 
@@ -38,11 +42,18 @@ import app.noam.extension.chesscom.Utils;
 import app.noam.extension.chesscom.theme.Accent;
 
 /**
- * An in-app browser for Lichess. The game is imported (no account needed) and its page opens here;
- * if the import fails, the analysis board opens with the PGN in its address.
+ * An in-app browser for Lichess, for Lichess reviews without a Lichess account. The game is
+ * imported (no account needed) and its page opens here, where Lichess's analysis board looks at
+ * it; if the import fails, the analysis board opens with the PGN in its address.
  */
 public final class LichessActivity extends Activity {
-    public static final String EXTRA_PGN = "morphe_pgn";
+    private static final String EXTRA_PGN = "morphe_pgn";
+
+    static void open(Context context, String pgn) {
+        Intent intent = new Intent(context, LichessActivity.class).putExtra(EXTRA_PGN, pgn);
+        if (!(context instanceof Activity)) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        context.startActivity(intent);
+    }
 
     private static final int BACKGROUND = 0xFF161512;
     private static final int BAR = 0xFF262421;
@@ -117,6 +128,18 @@ public final class LichessActivity extends Activity {
             @Override
             public void onPageFinished(WebView view, String url) {
                 pageUrl = url;
+            }
+
+            // Android ended the page's renderer (it does when memory runs low): the screen opens again,
+            // instead of the WebView taking the whole app down with it.
+            @RequiresApi(26)
+            @Override
+            public boolean onRenderProcessGone(WebView view, RenderProcessGoneDetail detail) {
+                view.destroy();
+                web = null;
+                finish();
+                if (pgn != null) open(LichessActivity.this, pgn);
+                return true;
             }
         });
         web.setWebChromeClient(new WebChromeClient() {
