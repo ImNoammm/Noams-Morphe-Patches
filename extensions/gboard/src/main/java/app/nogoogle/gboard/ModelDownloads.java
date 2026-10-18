@@ -387,7 +387,7 @@ public final class ModelDownloads {
         }
     }
 
-    private static void close(ParcelFileDescriptor pfd) throws IOException {
+    static void close(ParcelFileDescriptor pfd) throws IOException {
         try {
             pfd.close();
         } finally {
@@ -395,7 +395,7 @@ public final class ModelDownloads {
         }
     }
 
-    private static ParcelFileDescriptor open(String url, long from) throws IOException {
+    static ParcelFileDescriptor open(String url, long from) throws IOException {
         Context c = NoGoogleSettings.context();
         if (c == null) throw new IOException("no context");
         Uri u = new Uri.Builder().scheme("content").authority(GifBridge.HELPER).path("download")

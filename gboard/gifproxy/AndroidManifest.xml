@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Network helper for the No-Google Gboard: its only network access, for GIFs and model downloads. -->
+<!-- Network helper for the No-Google Gboard: its only network access, for GIFs, model and dictionary downloads. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="app.nogoogle.gifproxy">
 

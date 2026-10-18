@@ -33,7 +33,8 @@ import java.util.concurrent.Executors;
  *
  * <p>{@code content://app.nogoogle.gifproxy/fetch?u=<url>} (GIF sites, at most 25 MB) opens a pipe
  * carrying the HTTP status code (4 bytes, big-endian) and then the body.
- * {@code .../download?u=<url>&from=<offset>} (model hosts, any size, resumable) carries the status,
+ * {@code .../download?u=<url>&from=<offset>} (model hosts and Google's keyboard dictionary folder, any
+ * size, resumable) carries the status,
  * the full file size (8 bytes, -1 if unknown) and the body from the offset. A transfer that breaks
  * off closes the pipe with an error.
  */
@@ -46,6 +47,9 @@ public final class FetchProvider extends ContentProvider {
     // Model downloads: Hugging Face (and its hf.co file CDN), Mozilla's Firefox Translations models.
     private static final String[] MODEL_HOSTS = {"huggingface.co", "hf.co",
             "firefox.settings.services.mozilla.com", "firefox-settings-attachments.cdn.mozilla.net"};
+    // Gboard's dictionaries (when turned on in its settings): only this folder of this host.
+    private static final String DICTIONARY_HOST = "www.gstatic.com";
+    private static final String DICTIONARY_FOLDER = "/android/keyboard/dictionarypack/";
     private static final long MAX_GIF_BYTES = 25 << 20;
     private static final long MAX_MODEL_BYTES = 4L << 30;
     private static final int MAX_REDIRECTS = 3;
@@ -64,7 +68,7 @@ public final class FetchProvider extends ContentProvider {
         String kind = uri.getLastPathSegment();
         boolean model = "download".equals(kind);
         if (!model && !"fetch".equals(kind)) throw new FileNotFoundException("unknown request");
-        URL url = allowed(uri.getQueryParameter("u"), model ? MODEL_HOSTS : GIF_HOSTS);
+        URL url = allowed(uri.getQueryParameter("u"), model);
         long from = model ? Math.max(0, parse(uri.getQueryParameter("from"))) : 0;
         ParcelFileDescriptor[] pipe;
         try {
@@ -110,16 +114,24 @@ public final class FetchProvider extends ContentProvider {
         }
     }
 
-    /** HTTPS on the default port, to one of the given domains or their subdomains. */
-    static URL allowed(String target, String[] hosts) throws FileNotFoundException {
+    /**
+     * HTTPS on the default port: GIF requests to the GIF domains or their subdomains, downloads to the
+     * model domains (or their subdomains) or the dictionary folder.
+     */
+    static URL allowed(String target, boolean download) throws FileNotFoundException {
         if (target != null) {
             try {
                 URL url = new URL(target);
                 String host = url.getHost().toLowerCase(Locale.ROOT);
                 if ("https".equals(url.getProtocol()) && url.getUserInfo() == null
                         && (url.getPort() == -1 || url.getPort() == 443)) {
-                    for (String d : hosts) {
+                    for (String d : download ? MODEL_HOSTS : GIF_HOSTS) {
                         if (host.equals(d) || host.endsWith("." + d)) return url;
+                    }
+                    String path = url.getPath();
+                    if (download && host.equals(DICTIONARY_HOST) && path.startsWith(DICTIONARY_FOLDER)
+                            && !path.contains("..") && path.indexOf('%') < 0) {
+                        return url;
                     }
                 }
             } catch (MalformedURLException ignored) {
@@ -133,7 +145,7 @@ public final class FetchProvider extends ContentProvider {
         DataOutputStream out = new DataOutputStream(new ParcelFileDescriptor.AutoCloseOutputStream(sink));
         boolean answered = false;
         try {
-            conn = open(url, model ? MODEL_HOSTS : GIF_HOSTS, from);
+            conn = open(url, model, from);
             int code = conn.getResponseCode();
             out.writeInt(code);
             answered = true;
@@ -194,7 +206,7 @@ public final class FetchProvider extends ContentProvider {
     }
 
     /** Follows redirects only to allowed hosts; from > 0 asks for the rest of the file. */
-    private static HttpURLConnection open(URL url, String[] hosts, long from) throws IOException {
+    private static HttpURLConnection open(URL url, boolean download, long from) throws IOException {
         for (int hop = 0; ; hop++) {
             HttpURLConnection c = (HttpURLConnection) url.openConnection();
             c.setInstanceFollowRedirects(false);
@@ -208,7 +220,7 @@ public final class FetchProvider extends ContentProvider {
             String location = c.getHeaderField("Location");
             c.disconnect();
             if (location == null || hop >= MAX_REDIRECTS) throw new IOException("redirect " + code);
-            url = allowed(new URL(url, location).toString(), hosts);
+            url = allowed(new URL(url, location).toString(), download);
         }
     }
 

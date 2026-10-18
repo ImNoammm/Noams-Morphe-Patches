@@ -29,6 +29,7 @@ public final class HelperApk {
     private static final String TAG = "NoGoogleGif";
     private static final String ASSET = "nogoogle/gif-helper.apk";
     private static final String STATUS = "app.nogoogle.gboard.HELPER_INSTALL_STATUS";
+    private static final long VERSION = 2; // the version code of the helper inside (gifproxy/build.sh CODE)
     private static Status receiver; // registered once per process, guarded by HelperApk.class
     private static volatile Runnable listener;
 
@@ -49,6 +50,15 @@ public final class HelperApk {
         } catch (RuntimeException e) {
             Log.w(TAG, "network helper check failed", e);
             return READY; // can't tell: requests show what is wrong
+        }
+    }
+
+    /** Installed, but older than the one inside: it serves GIFs and models, not dictionaries. */
+    public static boolean outdated(Context c) {
+        try {
+            return c.getPackageManager().getPackageInfo(GifBridge.HELPER, 0).getLongVersionCode() < VERSION;
+        } catch (PackageManager.NameNotFoundException e) {
+            return false;
         }
     }
 

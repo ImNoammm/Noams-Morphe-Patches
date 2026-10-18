@@ -38,9 +38,11 @@ private const val TRANSLATE = "$EXT/translate/LocalTranslate;"
 private const val FLAGS = "$EXT/FlagOverrides;"
 private const val KEYBOARD_DIRECTION = "$EXT/KeyboardDirection;"
 private const val TABS = "$EXT/ExpressionTabs;"
+private const val INCOGNITO = "$EXT/Incognito;"
 private const val PORTED = "$EXT/extras/PortedFeatures;"
 private const val GIF_BRIDGE = "$EXT/gif/GifBridge;"
 private const val KEYBOARD_PICKER = "$EXT/KeyboardPicker;"
+private const val DICTIONARIES = "$EXT/Dictionaries;"
 private const val GIF_EXTENSION_INTERFACE =
     "Lcom/google/android/apps/inputmethod/libs/expression/extension/IGifKeyboardExtension;"
 private const val GIF_SEARCH_KEYBOARD = "Lcom/google/android/apps/inputmethod/libs/search/gif/GifSearchKeyboard;"
@@ -391,14 +393,25 @@ internal val flagHookPatch = bytecodePatch {
 val runtimeTogglesPatch = bytecodePatch(
     name = "Runtime feature toggles",
     description = "Lets the No-Google settings turn off Gboard features that only work through " +
-        "Google servers (Emoji Kitchen, Tenor, Assistant voice, proofread…) and hide the GIF and " +
-        "sticker tabs.",
+        "Google servers (Emoji Kitchen, Tenor, Assistant voice, proofread…), hide the GIF and " +
+        "sticker tabs, and keep Gboard in incognito mode everywhere.",
     default = true,
 ) {
     compatibleWith(COMPATIBILITY_GBOARD)
     dependsOn(extensionPatch, flagHookPatch)
 
     execute {
+        // Always incognito: each text field's options get the flag private browser tabs set, before
+        // Gboard's keyboard service reads them.
+        val startInput = findMethods { cd, m ->
+            cd.superclass == "Landroid/inputmethodservice/InputMethodService;" &&
+                (m.name == "onStartInput" || m.name == "onStartInputView") &&
+                m.params() == listOf("Landroid/view/inputmethod/EditorInfo;", "Z") && m.implementation != null
+        }
+        if (startInput.size != 2) throw PatchException("onStartInput / onStartInputView: ${startInput.size} found")
+        startInput.forEach {
+            mutable(it).addInstructions(0, "invoke-static/range {p1 .. p1}, $INCOGNITO->apply(Landroid/view/inputmethod/EditorInfo;)V")
+        }
         // The flag hook is shared with the Gboard-patches features: the online rules come with this patch.
         mutableClassDefBy(FLAGS).methods.single { it.name == "<clinit>" }.addInstructions(0, """
             const/4 v0, 0x1
@@ -617,7 +630,16 @@ val gifProvidersPatch = bytecodePatch(
         val builderType = factory.returnType
         val builder = classDefBy(builderType)
         val build = builder.methods.single { it.params().isEmpty() && it.returnType == response.type }
-        val setBody = builder.methods.single { it.returnType == "V" && it.params().size == 1 && "Null body" in it.strings() }
+        // The body setter checks for null with a "Null body" message; beta builds drop that message, so
+        // otherwise it is the setter whose type has a static (byte[]) factory: ByteString.copyFrom.
+        val setBody = builder.methods.singleOrNull { it.returnType == "V" && it.params().size == 1 && "Null body" in it.strings() }
+            ?: builder.methods.single { m ->
+                m.returnType == "V" && m.params().size == 1 && m.params()[0].let { type ->
+                    type.startsWith("L") && !type.startsWith("Ljava/") && classDefByOrNull(type)?.methods?.any {
+                        AccessFlags.STATIC.isSet(it.accessFlags) && it.params() == listOf("[B") && it.returnType == type
+                    } == true
+                }
+            }
         val bodyType = setBody.params().single()
         val setHeaders = builder.methods.single { it.returnType == "V" && it.params() == listOf("Ljava/util/Map;") }
         // AutoValue marks each primitive property set with one bit, in declaration order:
@@ -856,6 +878,78 @@ private fun Instruction.isStringArrayRead(): Boolean =
     opcode == Opcode.INVOKE_VIRTUAL && ((this as ReferenceInstruction).reference as MethodReference).let {
         it.definingClass == "Landroid/content/res/Resources;" && it.name == "getStringArray"
     }
+
+@Suppress("unused")
+val dictionaryDownloadsPatch = bytecodePatch(
+    name = "Dictionary downloads",
+    description = "Adds \"Download dictionaries from Google\" to No-Google settings (off by default). Only " +
+        "English comes with Gboard; with the switch on, Gboard's own downloader gets the other languages' " +
+        "dictionaries (word suggestions, autocorrect) through the network helper app (included), which " +
+        "for this can only reach Google's dictionary folder. With it off, the first time a language " +
+        "without a dictionary is used, a hint says so.",
+    default = true,
+) {
+    compatibleWith(COMPATIBILITY_GBOARD)
+    dependsOn(extensionPatch, gifHelperAppPatch)
+
+    execute {
+        // Gboard's file downloader (MDD) opens each connection with b(String id, String url), which first
+        // throws unless the app holds INTERNET: Dictionaries.permission decides for the dictionary folder,
+        // and Dictionaries.connection swaps the new (not yet connected) connection for the helper's.
+        val factory = single("downloader connection factory") { _, m ->
+            m.returnType == "Ljava/net/HttpURLConnection;" && m.params() == listOf("Ljava/lang/String;", "Ljava/lang/String;") &&
+                "Missing INTERNET permission, can't start download" in m.strings()
+        }
+        val ins = factory.implementation!!.instructions.toList()
+        val url = factory.implementation!!.registerCount - 1 // p2
+        val permission = ins.indexOfFirst { ((it as? ReferenceInstruction)?.reference as? StringReference)?.string == "android.permission.INTERNET" }
+        val check = (permission + 1 until ins.size).firstOrNull { ins[it].opcode == Opcode.INVOKE_STATIC }
+            ?.takeIf { ((ins[it] as ReferenceInstruction).reference as MethodReference).returnType == "I" && ins.getOrNull(it + 1)?.opcode == Opcode.MOVE_RESULT }
+            ?: throw PatchException("downloader: INTERNET check not found")
+        val granted = (ins[check + 1] as OneRegisterInstruction).registerA
+        val open = (check + 2 until ins.size).firstOrNull { i ->
+            ins[i].opcode == Opcode.INVOKE_INTERFACE && ((ins[i] as ReferenceInstruction).reference as MethodReference).let {
+                it.returnType == "Ljava/net/HttpURLConnection;" && it.parameterTypes.map { t -> t.toString() } == listOf("Ljava/lang/String;")
+            } && (ins[i] as FiveRegisterInstruction).registerD == url && ins.getOrNull(i + 1)?.opcode == Opcode.MOVE_RESULT_OBJECT
+        } ?: throw PatchException("downloader: connection not found")
+        val connection = (ins[open + 1] as OneRegisterInstruction).registerA
+        if (granted > 15 || url > 15) throw PatchException("downloader: registers out of range")
+        factory.addInstructions(open + 2, """
+            invoke-static/range {v$connection .. v$connection}, $DICTIONARIES->connection(Ljava/net/HttpURLConnection;)Ljava/net/HttpURLConnection;
+            move-result-object v$connection
+        """)
+        factory.addInstructions(check + 2, """
+            invoke-static {v$granted, v$url}, $DICTIONARIES->permission(ILjava/lang/String;)I
+            move-result v$granted
+        """)
+
+        // DelightKLPDownloader logs the version of each language's bundled dictionary (0: none): the hint
+        // is only for languages without one.
+        val format = "bundled KLP for %s version = %d"
+        val lookup = single("bundled dictionary version") { _, m -> format in m.strings() }
+        val li = lookup.implementation!!.instructions.toList()
+        val at = li.indexOfFirst { ((it as? ReferenceInstruction)?.reference as? StringReference)?.string == format }
+        val log = (at + 1 until li.size).firstOrNull { i ->
+            ((li[i] as? ReferenceInstruction)?.reference as? MethodReference)?.parameterTypes?.map { it.toString() } ==
+                listOf("Ljava/lang/String;", "Ljava/lang/Object;", "I")
+        } ?: throw PatchException("bundled dictionary version: log call not found")
+        val (locale, version) = when (val call = li[log]) {
+            is FiveRegisterInstruction -> call.registerE to call.registerF
+            is RegisterRangeInstruction -> call.startRegister + 2 to call.startRegister + 3
+            else -> throw PatchException("bundled dictionary version: unexpected log call")
+        }
+        if (locale > 15 || version > 15) throw PatchException("bundled dictionary version: registers out of range")
+        lookup.addInstructions(log + 1, "invoke-static {v$locale, v$version}, $DICTIONARIES->bundled(Ljava/lang/Object;I)V")
+
+        // The hint shows on the keyboard: one that came while it was hidden waits for it to show.
+        val startInputView = findMethods { cd, m ->
+            cd.superclass == "Landroid/inputmethodservice/InputMethodService;" && m.name == "onStartInputView" &&
+                m.params() == listOf("Landroid/view/inputmethod/EditorInfo;", "Z") && m.implementation != null
+        }.singleOrNull() ?: throw PatchException("onStartInputView not found")
+        mutable(startInputView).addInstructions(0,
+            "invoke-static/range {p0 .. p0}, $DICTIONARIES->keyboardShown(Landroid/inputmethodservice/InputMethodService;)V")
+    }
+}
 
 /**
  * AccessPointsBar keeps the toolbar capacity it read when it was built; every read asks

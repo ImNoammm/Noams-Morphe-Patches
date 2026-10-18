@@ -41,9 +41,11 @@ Right now it has patches for these apps:
 - Gboard 18.2.4 (arm64): cut off from Google. It has no internet permission and never talks to Play services or
   other Google apps. Voice typing runs on the phone with Whisper and the translate panel uses on-device models.
   GIFs come back from sources you pick (GIPHY and KLIPY with your own free key, nekos.best, Wikimedia Commons and
-  Openverse) through a small helper app, the only part that goes online. Right-to-left languages only change the
-  letters on the keys. It installs next to the normal Gboard and its switches are under No-Google in Gboard's
-  settings.
+  Openverse) through a small helper app, the only part that goes online. Only English's dictionary comes with
+  Gboard: turn on Download dictionaries from Google and the helper fetches the other languages' dictionaries, for
+  word suggestions and autocorrect, from Google's dictionary folder and nowhere else on Google. A switch keeps
+  Gboard in incognito mode everywhere. Right-to-left languages only change the letters on the keys. It installs
+  next to the normal Gboard and its switches are under No-Google in Gboard's settings.
 - Geocaching 10.21.0: Premium-only features work on a Basic account, each as its own switch: map filters,
   statistics from your own finds, log templates, lists, experimental features and sorting your finds and hides,
   and the upgrade badges are gone. Caches the app locks behind Premium open too: they load from geocaching.com the
@@ -69,8 +71,9 @@ Chess.com's Stockfish analysis patch downloads the official Stockfish 19 (80 MB)
 patches, so patching chess.com with it needs internet.
 
 After you install Gboard, tap its app icon: it takes you to turn the keyboard on and then to choose it, one step at
-a time. Its voice and translation models download in No-Google settings. Downloads and GIFs go through the helper
-app, which the keyboard installs for you when it needs it (Android asks you to confirm).
+a time. Its voice and translation models download in No-Google settings, and so do other languages' dictionaries
+once you turn on Download dictionaries from Google. Downloads and GIFs go through the helper app, which the
+keyboard installs or updates for you when it needs it (Android asks you to confirm).
 
 ## Building it
 

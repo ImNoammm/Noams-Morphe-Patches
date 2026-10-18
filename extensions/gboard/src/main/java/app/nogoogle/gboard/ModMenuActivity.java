@@ -157,10 +157,16 @@ public class ModMenuActivity extends Activity {
                 NoGoogleSettings.REPORT_GMS_MISSING);
         toggle("Turn off online-only features", "Emoji Kitchen, Tenor, Assistant voice, proofread…",
                 NoGoogleSettings.DISABLE_ONLINE_FEATURES);
+        toggle("Always use incognito mode", "No new words learned and no history kept, in every app "
+                + "(as in private browser tabs)", NoGoogleSettings.ALWAYS_INCOGNITO);
 
         buildGif();
 
         header("Keyboard");
+        toggle("Download dictionaries from Google", "Word suggestions and autocorrect in languages other than "
+                + "English (only English comes with Gboard). The network helper app downloads them; for this it "
+                + "can only reach Google's dictionary folder, which sees your IP address and the languages",
+                NoGoogleSettings.DICTIONARY_DOWNLOADS, this::dictionariesChanged);
         toggle("Keep the keyboard left-to-right", "Right-to-left languages (Hebrew, Arabic…) change only the "
                 + "letters: nothing is mirrored and the keyboard's menus stay in the phone's language. Restart "
                 + "Gboard after changing", NoGoogleSettings.KEEP_LTR);
@@ -338,19 +344,31 @@ public class ModMenuActivity extends Activity {
                 });
     }
 
+    /** Turning dictionary downloads on installs (or updates) the network helper app if needed. */
+    private void dictionariesChanged() {
+        if (NoGoogleSettings.bool(NoGoogleSettings.DICTIONARY_DOWNLOADS)
+                && (HelperApk.state(this) != HelperApk.READY || HelperApk.outdated(this))) {
+            HelperApk.install(this);
+        }
+    }
+
     private void buildGif() {
         header("GIFs & stickers");
         int helper = HelperApk.state(this);
-        note((helper == HelperApk.READY ? "Network helper app: installed."
+        boolean old = helper == HelperApk.READY && HelperApk.outdated(this);
+        note((old ? "Network helper app: an older version, which can't download dictionaries. Updating it from "
+                        + "here fixes that."
+                : helper == HelperApk.READY ? "Network helper app: installed."
                 : helper == HelperApk.MISSING ? "Network helper app: NOT installed, so GIFs can't load."
                 : "Network helper app: installed some other way, and it doesn't serve this keyboard, so GIFs "
                         + "can't load. Reinstalling it from here fixes that.")
                 + " Gboard itself still has no internet: GIF searches and pictures go through that separate "
-                + "app, which can only reach the GIF sites below (and the model downloads further down). The site you search sees your search words "
+                + "app, which can only reach the GIF sites below (and the model and dictionary downloads). The site you search sees your search words "
                 + "and your IP address, nothing else you type. Each enabled source is a chip in the GIF tab; "
                 + "tap one to search there.");
-        if (helper != HelperApk.READY) {
-            action(helper == HelperApk.MISSING ? "Install the network helper app" : "Reinstall the network helper app",
+        if (helper != HelperApk.READY || old) {
+            action(old ? "Update the network helper app" : helper == HelperApk.MISSING ? "Install the network helper app"
+                            : "Reinstall the network helper app",
                     "It comes with this keyboard", v -> HelperApk.install(this));
         }
         for (GifBridge.Source source : GifBridge.SOURCES) {

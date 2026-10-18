@@ -7,7 +7,8 @@ ROOT=$(cd "$(dirname "$0")" && pwd)
 ANDROID_JAR=$HOME/gb/sdk/android-35/android.jar
 KEYSTORE=${KEYSTORE:-$HOME/gb/work/nogoogle.keystore}
 VERSION=${VERSION:-1.0.0}
-CODE=${CODE:-1}
+# Raise CODE (and HelperApk.VERSION in the extension) when what the helper serves changes.
+CODE=${CODE:-2}
 B=$ROOT/build
 rm -rf "$B" && mkdir -p "$B/classes" "$B/dex" "$ROOT/out"
 # Termux's aapt2 cannot read the API 34+ resource format of android.jar; link against the stripped

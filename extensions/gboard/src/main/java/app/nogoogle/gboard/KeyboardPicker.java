@@ -1,6 +1,7 @@
 package app.nogoogle.gboard;
 
 import android.app.Activity;
+import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.Intent;
 import android.database.ContentObserver;
@@ -74,7 +75,7 @@ public final class KeyboardPicker extends ContentObserver implements ViewTreeObs
                     Settings.Secure.getUriFor(Settings.Secure.ENABLED_INPUT_METHODS), false, this);
             Toast.makeText(activity, "Enable " + label, Toast.LENGTH_LONG).show();
             // In this task, so that Back (or turning it on, see onChange) comes back here.
-            activity.startActivity(new Intent(Settings.ACTION_INPUT_METHOD_SETTINGS));
+            if (!start(new Intent(Settings.ACTION_INPUT_METHOD_SETTINGS))) close();
             return;
         }
         waitingForEnable = false;
@@ -93,7 +94,7 @@ public final class KeyboardPicker extends ContentObserver implements ViewTreeObs
             return;
         }
         detach();
-        activity.startActivity(new Intent().setClassName(me.getPackageName(), me.getSettingsActivity()));
+        start(new Intent().setClassName(me.getPackageName(), me.getSettingsActivity()));
         activity.finish(); // not the task: the settings opened in it
     }
 
@@ -152,8 +153,19 @@ public final class KeyboardPicker extends ContentObserver implements ViewTreeObs
 
     private void keyboardListInstead() {
         detach();
-        activity.startActivity(new Intent(Settings.ACTION_INPUT_METHOD_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        start(new Intent(Settings.ACTION_INPUT_METHOD_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
         activity.finishAndRemoveTask();
+    }
+
+    /** A ROM without that settings screen gets a hint instead of a crash. */
+    private boolean start(Intent intent) {
+        try {
+            activity.startActivity(intent);
+            return true;
+        } catch (ActivityNotFoundException | SecurityException e) {
+            Toast.makeText(activity, "Open Android's keyboard settings to set up this keyboard", Toast.LENGTH_LONG).show();
+            return false;
+        }
     }
 
     /** Ends the setup screen, and with it the keyboard list it may have opened in its task. */
