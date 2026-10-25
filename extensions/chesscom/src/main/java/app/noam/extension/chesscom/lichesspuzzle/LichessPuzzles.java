@@ -49,6 +49,7 @@ public final class LichessPuzzles {
     private static volatile boolean puzzleVisible;
     private static boolean watching;
     private static final String PUZZLE_SCREEN = "com.chess.features.puzzles.rated.RatedPuzzlesGameActivity";
+    private static final String HOME_SCREEN = "com.chess.home.HomeActivity";
 
     private static final Function0<Object> SOLVE = () -> {
         solve();
@@ -98,7 +99,8 @@ public final class LichessPuzzles {
         }
         frozenPuzzlePath = cachedPuzzlePath;
         frozenPuzzleUser = cachedPuzzleUser;
-        unfreezeAt = SystemClock.uptimeMillis() + 3000;
+        freezeActive = frozenPuzzlePath != null || frozenPuzzleUser != null;
+        unfreezeAt = Long.MAX_VALUE;
         active = true;
         puzzleVisible = true;
         watchScreen();
@@ -119,6 +121,7 @@ public final class LichessPuzzles {
     private static volatile Object frozenPuzzlePath;
     private static volatile Object cachedPuzzleUser;
     private static volatile Object frozenPuzzleUser;
+    private static volatile boolean freezeActive;
     private static volatile long unfreezeAt;
 
     /** The hub's empty/loading user-data state; it must not replace the real XP/level. */
@@ -130,14 +133,20 @@ public final class LichessPuzzles {
      * starts on the player's real level instead of flashing the top.
      */
     public static Object pathForHub(Object path) {
-        if (frozenPuzzlePath != null && SystemClock.uptimeMillis() < unfreezeAt) return frozenPuzzlePath;
+        if (freezeActive) {
+            if (SystemClock.uptimeMillis() < unfreezeAt) return frozenPuzzlePath;
+            freezeActive = false;
+        }
         if (path != null) cachedPuzzlePath = path;
         return path != null ? path : cachedPuzzlePath;
     }
 
     /** The hub's user data (path XP, level, rating); frozen like the path for the return. */
     public static Object userForHub(Object user) {
-        if (frozenPuzzleUser != null && SystemClock.uptimeMillis() < unfreezeAt) return frozenPuzzleUser;
+        if (freezeActive) {
+            if (SystemClock.uptimeMillis() < unfreezeAt) return frozenPuzzleUser;
+            freezeActive = false;
+        }
         if (user != null && !user.getClass().getName().equals(EMPTY_PUZZLE_USER)) cachedPuzzleUser = user;
         return user != null ? user : cachedPuzzleUser;
     }
@@ -196,7 +205,12 @@ public final class LichessPuzzles {
 
             @Override
             public void onActivityResumed(Activity activity) {
-                puzzleVisible = activity.getClass().getName().equals(PUZZLE_SCREEN);
+                String name = activity.getClass().getName();
+                puzzleVisible = name.equals(PUZZLE_SCREEN);
+                // The hub is back: hold the frozen values briefly for its first refresh.
+                if (name.equals(HOME_SCREEN) && freezeActive && unfreezeAt == Long.MAX_VALUE) {
+                    unfreezeAt = SystemClock.uptimeMillis() + 1000;
+                }
             }
 
             @Override public void onActivitySaveInstanceState(Activity activity, Bundle state) {}
