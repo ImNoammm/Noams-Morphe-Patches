@@ -6,6 +6,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
+import android.os.SystemClock;
 
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Constructor;
@@ -44,6 +45,8 @@ public final class LichessPuzzles {
     private static boolean solving;
     /** Between Puzzles from Lichess and Solve Puzzles, guest puzzles are Lichess's. */
     private static volatile boolean active;
+    /** The Lichess puzzle screen is the activity in front. */
+    private static volatile boolean puzzleVisible;
     private static boolean watching;
     private static final String PUZZLE_SCREEN = "com.chess.features.puzzles.rated.RatedPuzzlesGameActivity";
 
@@ -93,9 +96,60 @@ public final class LichessPuzzles {
             Utils.toast("Download Lichess puzzles to play them offline");
             return HANDLED;
         }
+        frozenPuzzlePath = cachedPuzzlePath;
+        frozenPuzzleUser = cachedPuzzleUser;
+        unfreezeAt = SystemClock.uptimeMillis() + 3000;
         active = true;
+        puzzleVisible = true;
         watchScreen();
         return LICHESS_PUZZLES;
+    }
+
+    /**
+     * The Lichess puzzle screen is in front. Its path-progress refresh is skipped then: a
+     * guest-session refresh would overwrite the Puzzles hub's current level with the guest
+     * path and make it jump to the top when the screen closes.
+     */
+    public static boolean onPuzzleScreen() {
+        return puzzleVisible;
+    }
+
+    /** The Puzzles hub's last path state, used whenever a new one is not available yet. */
+    private static volatile Object cachedPuzzlePath;
+    private static volatile Object frozenPuzzlePath;
+    private static volatile Object cachedPuzzleUser;
+    private static volatile Object frozenPuzzleUser;
+    private static volatile long unfreezeAt;
+
+    /** The hub's empty/loading user-data state; it must not replace the real XP/level. */
+    private static final String EMPTY_PUZZLE_USER = "com.chess.features.puzzles.home.ui.a2$b";
+
+    /**
+     * The path the Puzzles hub should use. Just after Lichess closes, the hub briefly has a
+     * guest path (level 1); freeze the path from before the session for a moment so the hub
+     * starts on the player's real level instead of flashing the top.
+     */
+    public static Object pathForHub(Object path) {
+        if (frozenPuzzlePath != null && SystemClock.uptimeMillis() < unfreezeAt) return frozenPuzzlePath;
+        if (path != null) cachedPuzzlePath = path;
+        return path != null ? path : cachedPuzzlePath;
+    }
+
+    /** The hub's user data (path XP, level, rating); frozen like the path for the return. */
+    public static Object userForHub(Object user) {
+        if (frozenPuzzleUser != null && SystemClock.uptimeMillis() < unfreezeAt) return frozenPuzzleUser;
+        if (user != null && !user.getClass().getName().equals(EMPTY_PUZZLE_USER)) cachedPuzzleUser = user;
+        return user != null ? user : cachedPuzzleUser;
+    }
+
+    /**
+     * The session ends as soon as the puzzle screen is finishing. The Puzzles hub resumes
+     * before the activity is destroyed, so waiting for destruction would leave the session
+     * active during the hub's refresh: the refresh's path update is skipped and the puzzle
+     * path jumps back to the top when the Lichess screen closes.
+     */
+    private static void endSessionIfFinishing(Activity activity) {
+        if (activity.getClass().getName().equals(PUZZLE_SCREEN) && activity.isFinishing()) active = false;
     }
 
     /** The session ends when chess.com's puzzle screen closes. */
@@ -104,15 +158,47 @@ public final class LichessPuzzles {
         watching = true;
         ((Application) Utils.context()).registerActivityLifecycleCallbacks(new Application.ActivityLifecycleCallbacks() {
             @Override
-            public void onActivityDestroyed(Activity activity) {
-                if (activity.getClass().getName().equals(PUZZLE_SCREEN)) active = false;
+            public void onActivityPaused(Activity activity) {
+                if (activity.getClass().getName().equals(PUZZLE_SCREEN) && !activity.isChangingConfigurations()) {
+                    puzzleVisible = false;
+                }
+                endSessionIfFinishing(activity);
             }
 
-            @Override public void onActivityCreated(Activity activity, Bundle state) {}
-            @Override public void onActivityStarted(Activity activity) {}
-            @Override public void onActivityResumed(Activity activity) {}
-            @Override public void onActivityPaused(Activity activity) {}
-            @Override public void onActivityStopped(Activity activity) {}
+            @Override
+            public void onActivityStopped(Activity activity) {
+                if (activity.getClass().getName().equals(PUZZLE_SCREEN) && !activity.isChangingConfigurations()) {
+                    puzzleVisible = false;
+                }
+                endSessionIfFinishing(activity);
+            }
+
+            @Override
+            public void onActivityDestroyed(Activity activity) {
+                boolean puzzle = activity.getClass().getName().equals(PUZZLE_SCREEN);
+                // Rotating the board recreates the activity: the session must survive it,
+                // and the recreated screen is still the Lichess screen.
+                if (puzzle && !activity.isChangingConfigurations()) {
+                    puzzleVisible = false;
+                    active = false;
+                }
+            }
+
+            @Override
+            public void onActivityCreated(Activity activity, Bundle state) {
+                if (activity.getClass().getName().equals(PUZZLE_SCREEN)) puzzleVisible = true;
+            }
+
+            @Override
+            public void onActivityStarted(Activity activity) {
+                if (activity.getClass().getName().equals(PUZZLE_SCREEN)) puzzleVisible = true;
+            }
+
+            @Override
+            public void onActivityResumed(Activity activity) {
+                puzzleVisible = activity.getClass().getName().equals(PUZZLE_SCREEN);
+            }
+
             @Override public void onActivitySaveInstanceState(Activity activity, Bundle state) {}
         });
     }

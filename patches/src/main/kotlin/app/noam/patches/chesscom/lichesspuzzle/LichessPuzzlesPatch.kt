@@ -44,6 +44,19 @@ private const val PATH_STATS = "Lcom/chess/features/path/ui/v4;"
 private const val RATING_STATS = "Lcom/chess/features/puzzles/db/model/o;"
 private const val STATS_LOADED = "Lcom/chess/features/puzzles/rated/p0\$q0;"
 private const val VIEW_MODEL = "Lcom/chess/features/puzzles/rated/RatedPuzzlesGameViewModel;"
+private const val PATH_REPOSITORY = "Lcom/chess/features/path/data/PathProgressRepositoryImpl;"
+private const val PUZZLE_SERVICE = "Lcom/chess/features/puzzles/api/h;"
+private const val GUEST_STORE = "Lcom/chess/internal/puzzles/r2;"
+private const val HOME_PUZZLES_VM = "Lcom/chess/features/puzzles/home/menu/HomePuzzlesMenuViewModel;"
+private const val HOME_PUZZLES_REFRESH =
+    "Lcom/chess/features/puzzles/home/menu/HomePuzzlesMenuViewModel\$refreshData\$2;"
+private const val HOME_PUZZLES_RESUME =
+    "Lcom/chess/features/puzzles/home/menu/HomePuzzlesMenuViewModel\$refreshDailyPuzzleFab\$2;"
+private const val HUB_STATE = "Lcom/chess/features/puzzles/home/ui/y1;"
+private const val HUB_PATH = "Lcom/chess/features/puzzles/home/ui/z1;"
+private const val HUB_USER = "Lcom/chess/features/puzzles/home/ui/a2;"
+private const val UNIT = "sget-object v0, Lkotlin/Unit;->a:Lkotlin/Unit;\nreturn-object v0"
+private const val NOTHING = "const/4 v0, 0x0\nreturn-object v0"
 
 private val lichessPuzzlesResourcePatch = resourcePatch(
     description = "Adds the Puzzles tab button's text.",
@@ -195,6 +208,86 @@ val lichessPuzzlesPatch = bytecodePatch(
         } ?: throw PatchException("The guest puzzles were not found")
         guestPuzzles.addInstructions(0, "invoke-static/range { p0 .. p0 }, $PUZZLES->onGuestPuzzles(Ljava/lang/Object;)V")
 
+        // A Lichess session is local, but chess.com's screen still runs its online flows,
+        // which are what score the puzzles and load the rating. Those flows also fetch
+        // chess.com's next path puzzle and path stats; once the account has hit chess.com's
+        // daily puzzle limit that first fetch fails with "Daily Limit for Puzzles Reached"
+        // and the screen never opens. Nothing in a session needs chess.com's server, so skip
+        // those calls: the puzzles, solutions and rating are all in the extension.
+        fun MutableMethod.skipInSession(result: String = UNIT) = addInstructionsWithLabels(
+            0,
+            """
+                invoke-static { }, $PUZZLES->session()Z
+                move-result v0
+                if-eqz v0, :morphe_chesscom
+                $result
+            """,
+            ExternalLabel("morphe_chesscom", getInstruction(0)),
+        )
+        fun MutableMethod.fetchesPuzzle() = implementation?.instructions?.any { instruction ->
+            instruction.methodReference?.let { it.definingClass == PUZZLE_SERVICE && it.name == "b" } == true
+        } == true
+        // The next puzzle (updatePathProblems) and the prefetch after a solve. The prefetch
+        // returns the error it got, so it gets none; the two update methods return Unit.
+        repository.methods.filter { it.returnType == "Ljava/lang/Object;" && it.fetchesPuzzle() }
+            .forEach { method ->
+                val result = if (method.parameterTypes.firstOrNull()?.toString() == "J") NOTHING else UNIT
+                method.skipInSession(result)
+            }
+        // Chess.com's own guest refill must not mix its puzzles into the Lichess database.
+        refill.skipInSession()
+        // The Lichess screen must not refresh path progress/friends: the guest session would
+        // overwrite the Puzzles hub's current level with the guest path. The hub refreshes
+        // its own path when it resumes, so its calls are left alone.
+        fun MutableMethod.skipOnPuzzleScreen(result: String = UNIT) = addInstructionsWithLabels(
+            0,
+            """
+                invoke-static { }, $PUZZLES->onPuzzleScreen()Z
+                move-result v0
+                if-eqz v0, :morphe_hub
+                $result
+            """,
+            ExternalLabel("morphe_hub", getInstruction(0)),
+        )
+        mutableClassDefBy(PATH_REPOSITORY).methods.filter {
+            it.parameterTypes.size == 1 && it.returnType == "Ljava/lang/Object;"
+        }.forEach { it.skipOnPuzzleScreen() }
+
+        // The Puzzles hub refreshes only its daily puzzle when it resumes, not its path.
+        // A Lichess session can leave the hub's cached path at the top; refreshing it on
+        // resume makes the hub pick the player's real level again, as Solve Puzzles does.
+        fun MutableMethod.createsType(type: String) = implementation?.instructions?.any { instruction ->
+            ((instruction as? ReferenceInstruction)?.reference as? TypeReference)?.type == type
+        } == true
+        val homePuzzles = mutableClassDefBy(HOME_PUZZLES_VM)
+        val refreshData = homePuzzles.methods.singleOrNull { method ->
+            method.parameterTypes.isEmpty() && method.returnType == "V" && method.createsType(HOME_PUZZLES_REFRESH)
+        } ?: throw PatchException("The Puzzles hub's refresh was not found")
+        val refreshOnResume = homePuzzles.methods.singleOrNull { method ->
+            method.parameterTypes.isEmpty() && method.returnType == "V" && method.createsType(HOME_PUZZLES_RESUME)
+        } ?: throw PatchException("The Puzzles hub's resume was not found")
+        refreshOnResume.addInstructions(0, "invoke-direct { p0 }, $HOME_PUZZLES_VM->${refreshData.name}()V")
+
+        // While the Lichess screen closes, the hub can briefly get a guest path (level 1)
+        // and guest user data (0 XP), which starts the map at the top and the XP bar at
+        // zero. pathForHub()/userForHub() freeze the pre-session values for that transition.
+        val hubState = mutableClassDefBy(HUB_STATE)
+        val hubStateConstructor = hubState.methods.singleOrNull { method ->
+            method.name == "<init>" && method.parameterTypes.size == 12 &&
+                method.parameterTypes[6].toString() == HUB_PATH
+        } ?: throw PatchException("The Puzzles hub state constructor was not found")
+        hubStateConstructor.addInstructions(
+            1,
+            """
+                invoke-static { p6 }, $PUZZLES->userForHub(Ljava/lang/Object;)Ljava/lang/Object;
+                move-result-object p6
+                check-cast p6, $HUB_USER
+                invoke-static { p7 }, $PUZZLES->pathForHub(Ljava/lang/Object;)Ljava/lang/Object;
+                move-result-object p7
+                check-cast p7, $HUB_PATH
+            """,
+        )
+
         val score: MutableMethod = repository.methods.singleOrNull { method ->
             method.parameterTypes.size == 4 && method.parameterTypes[0].toString() == "Ljava/util/List;" &&
                 method.parameterTypes[1].toString() == SOLUTION && method.parameterTypes[2].toString() == "Z"
@@ -241,6 +334,11 @@ val lichessPuzzlesPatch = bytecodePatch(
             """,
             ExternalLabel("morphe_no_session", getInstruction(0)),
         )
+        // Chess.com ends its guest flow when the guest store was never started and the table
+        // is empty. Lichess puzzles are added in the background, so during a session the store
+        // counts as started: the screen waits for them instead of ending before they arrive.
+        mutableClassDefBy(GUEST_STORE).methods.single { it.parameterTypes.isEmpty() && it.returnType == "Z" }
+            .whileSession("const/4 v0, 0x1\nreturn v0")
         val regularMode = enumField(MODE, "REGULAR")
         mutableClassDefBy(MODE).methods.single { it.parameterTypes.isEmpty() && it.returnType == "Z" }
             .whileSession("const/4 v0, 0x0\nreturn v0")
