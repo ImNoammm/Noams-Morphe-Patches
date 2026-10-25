@@ -208,54 +208,34 @@ val lichessPuzzlesPatch = bytecodePatch(
         } ?: throw PatchException("The guest puzzles were not found")
         guestPuzzles.addInstructions(0, "invoke-static/range { p0 .. p0 }, $PUZZLES->onGuestPuzzles(Ljava/lang/Object;)V")
 
-        // A Lichess session is local, but chess.com's screen still runs its online flows,
-        // which are what score the puzzles and load the rating. Those flows also fetch
-        // chess.com's next path puzzle and path stats; once the account has hit chess.com's
-        // daily puzzle limit that first fetch fails with "Daily Limit for Puzzles Reached"
-        // and the screen never opens. Nothing in a session needs chess.com's server, so skip
-        // those calls: the puzzles, solutions and rating are all in the extension.
-        fun MutableMethod.skipInSession(result: String = UNIT) = addInstructionsWithLabels(
+        // A Liss session supplies puzzles, solutions and rating locally; skip server calls.
+        fun MutableMethod.skipIf(condition: String, result: String = UNIT) = addInstructionsWithLabels(
             0,
             """
-                invoke-static { }, $PUZZLES->session()Z
+                invoke-static { }, $PUZZLES->$condition()Z
                 move-result v0
-                if-eqz v0, :morphe_chesscom
+                if-eqz v0, :morphe_continue
                 $result
             """,
-            ExternalLabel("morphe_chesscom", getInstruction(0)),
+            ExternalLabel("morphe_continue", getInstruction(0)),
         )
         fun MutableMethod.fetchesPuzzle() = implementation?.instructions?.any { instruction ->
             instruction.methodReference?.let { it.definingClass == PUZZLE_SERVICE && it.name == "b" } == true
         } == true
-        // The next puzzle (updatePathProblems) and the prefetch after a solve. The prefetch
-        // returns the error it got, so it gets none; the two update methods return Unit.
+        // Next puzzle and prefetch; the prefetch returns its error, the update methods Unit.
         repository.methods.filter { it.returnType == "Ljava/lang/Object;" && it.fetchesPuzzle() }
             .forEach { method ->
                 val result = if (method.parameterTypes.firstOrNull()?.toString() == "J") NOTHING else UNIT
-                method.skipInSession(result)
+                method.skipIf("session", result)
             }
-        // Chess.com's own guest refill must not mix its puzzles into the Lichess database.
-        refill.skipInSession()
-        // The Lichess screen must not refresh path progress/friends: the guest session would
-        // overwrite the Puzzles hub's current level with the guest path. The hub refreshes
-        // its own path when it resumes, so its calls are left alone.
-        fun MutableMethod.skipOnPuzzleScreen(result: String = UNIT) = addInstructionsWithLabels(
-            0,
-            """
-                invoke-static { }, $PUZZLES->onPuzzleScreen()Z
-                move-result v0
-                if-eqz v0, :morphe_hub
-                $result
-            """,
-            ExternalLabel("morphe_hub", getInstruction(0)),
-        )
+        // Don't mix chess.com's guest puzzles into the Liss database.
+        refill.skipIf("session")
+        // The Liss screen must not refresh the hub's path; the hub does that on resume.
         mutableClassDefBy(PATH_REPOSITORY).methods.filter {
             it.parameterTypes.size == 1 && it.returnType == "Ljava/lang/Object;"
-        }.forEach { it.skipOnPuzzleScreen() }
+        }.forEach { it.skipIf("onPuzzleScreen") }
 
-        // The Puzzles hub refreshes only its daily puzzle when it resumes, not its path.
-        // A Lichess session can leave the hub's cached path at the top; refreshing it on
-        // resume makes the hub pick the player's real level again, as Solve Puzzles does.
+        // The hub only refreshes its daily puzzle on resume; also refresh its path.
         fun MutableMethod.createsType(type: String) = implementation?.instructions?.any { instruction ->
             ((instruction as? ReferenceInstruction)?.reference as? TypeReference)?.type == type
         } == true
@@ -268,9 +248,7 @@ val lichessPuzzlesPatch = bytecodePatch(
         } ?: throw PatchException("The Puzzles hub's resume was not found")
         refreshOnResume.addInstructions(0, "invoke-direct { p0 }, $HOME_PUZZLES_VM->${refreshData.name}()V")
 
-        // While the Lichess screen closes, the hub can briefly get a guest path (level 1)
-        // and guest user data (0 XP), which starts the map at the top and the XP bar at
-        // zero. pathForHub()/userForHub() freeze the pre-session values for that transition.
+        // Keep the hub's map and XP on the pre-session values while Liss closes.
         val hubState = mutableClassDefBy(HUB_STATE)
         val hubStateConstructor = hubState.methods.singleOrNull { method ->
             method.name == "<init>" && method.parameterTypes.size == 12 &&
@@ -321,9 +299,7 @@ val lichessPuzzlesPatch = bytecodePatch(
             ExternalLabel("morphe_score", score.getInstruction(0)),
         )
 
-        // During a Lichess session chess.com's puzzle screen plays it as rated and online: the
-        // guest mode stays the data source, but "local mode" is off (solutions get scored, rating
-        // stats load), the layout is Classic, and the rating it shows is the Lichess one.
+        // Play the session as rated/online, with the Liss rating and stats.
         fun MutableMethod.whileSession(value: String) = addInstructionsWithLabels(
             0,
             """
@@ -334,9 +310,7 @@ val lichessPuzzlesPatch = bytecodePatch(
             """,
             ExternalLabel("morphe_no_session", getInstruction(0)),
         )
-        // Chess.com ends its guest flow when the guest store was never started and the table
-        // is empty. Lichess puzzles are added in the background, so during a session the store
-        // counts as started: the screen waits for them instead of ending before they arrive.
+        // Wait for the background Liss insert instead of ending the guest flow.
         mutableClassDefBy(GUEST_STORE).methods.single { it.parameterTypes.isEmpty() && it.returnType == "Z" }
             .whileSession("const/4 v0, 0x1\nreturn v0")
         val regularMode = enumField(MODE, "REGULAR")
@@ -347,8 +321,7 @@ val lichessPuzzlesPatch = bytecodePatch(
         val ratingValue = "invoke-static { }, $PUZZLES->rating()I\nmove-result v0\nreturn v0"
         mutableClassDefBy(PATH_STATS).getterForLabel(", userRating=").whileSession(ratingValue)
 
-        // The Classic layout shows the rating (bottom right) only once the screen has its path
-        // stats, which guest mode never loads: a session starts with default ones instead.
+        // The Classic layout needs path stats, which guest mode never loads.
         val statsLoaded = mutableClassDefBy(STATS_LOADED)
         val withStats = statsLoaded.methods.singleOrNull { method ->
             method.returnType == PATH_STATS && method.parameterTypes.map { it.toString() } == listOf(PATH_STATS)
@@ -367,7 +340,7 @@ val lichessPuzzlesPatch = bytecodePatch(
             ExternalLabel("morphe_stats", withStats.getInstruction(0)),
         )
         mutableClassDefBy(RATING_STATS).getterForLabel(", current=").whileSession(ratingValue)
-        // The chip itself also needs rating stats, which guest mode gives as flowOf(null).
+        // The rating chip also needs stats, which guest mode gives as flowOf(null).
         val ratingStats = mutableClassDefBy(VIEW_MODEL).methods.singleOrNull { method ->
             method.parameterTypes.isEmpty() && method.annotations.any { annotation ->
                 annotation.type == "Ldalvik/annotation/Signature;" && annotation.elements.any { element ->
@@ -396,9 +369,7 @@ val lichessPuzzlesPatch = bytecodePatch(
             ExternalLabel("morphe_rating_stats", ratingStats.getInstruction(0)),
         )
 
-        // The Puzzles tab's menu is PathRootMenuState(expanded, big button text, button above it,
-        // buttons, ...). The button above is empty unless there is a next lesson. Ours takes the big
-        // button and Solve Puzzles goes above it, or first in the menu's list when Next Lesson has the spot.
+        // The tab's menu: ours takes the big button, Solve Puzzles goes above it (or first).
         mutableClassDefBy(PUZZLES_TAB).methods.forEach { method ->
             val instructions = method.implementation?.instructions?.toList() ?: return@forEach
             val index = instructions.indexOfFirst { instruction ->
