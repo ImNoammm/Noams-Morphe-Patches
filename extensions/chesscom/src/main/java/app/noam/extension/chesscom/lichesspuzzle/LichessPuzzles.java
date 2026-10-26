@@ -6,6 +6,8 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.SystemClock;
 
 import java.lang.ref.WeakReference;
@@ -16,6 +18,8 @@ import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import app.noam.extension.chesscom.Features;
 import app.noam.extension.chesscom.Utils;
@@ -91,12 +95,13 @@ public final class LichessPuzzles {
     /** What the big button does: chess.com's own puzzles, Lichess's in chess.com's screen, or nothing more. */
     public static final int SOLVE_PUZZLES = 0, LICHESS_PUZZLES = 1, HANDLED = 2;
 
-    /** Opens Liss puzzles, or the settings page when no pack is downloaded. */
+    /** Opens Lichess puzzles, or the settings page when no pack is downloaded. */
     public static int onBigButton() {
         if (solving || !enabled()) return SOLVE_PUZZLES;
-        if (storedPuzzles() == 0) {
+        Context app = Utils.context();
+        if (app == null || !PuzzleStore.get(app).any()) {
             Context context = Utils.topActivity();
-            if (context == null) context = Utils.context();
+            if (context == null) context = app;
             if (context == null) return HANDLED;
             Intent intent = new Intent(context, MorpheSettingsActivity.class)
                 .putExtra(MorpheSettingsActivity.EXTRA_PAGE, Features.PAGE_PUZZLES);
@@ -117,7 +122,7 @@ public final class LichessPuzzles {
 
     /** True while the Lichess puzzle screen is in front. */
     public static boolean onPuzzleScreen() {
-        return puzzleVisible;
+        return active && puzzleVisible;
     }
 
     /** The hub's path, or the frozen pre-session path during a return. */
@@ -140,7 +145,7 @@ public final class LichessPuzzles {
         return user != null ? user : lastUser;
     }
 
-    /** Ends the session before the hub resumes, not after the Liss screen is destroyed. */
+    /** Ends the session before the hub resumes, not after the Lichess screen is destroyed. */
     private static void endSessionIfFinishing(Activity activity) {
         if (isPuzzle(activity) && activity.isFinishing()) active = false;
     }
@@ -158,7 +163,7 @@ public final class LichessPuzzles {
         endSessionIfFinishing(activity);
     }
 
-    /** Watches the Liss screen's lifecycle. */
+    /** Watches the Lichess screen's lifecycle. */
     private static void watchScreen() {
         if (watching || !(Utils.context() instanceof Application)) return;
         watching = true;
@@ -262,7 +267,7 @@ public final class LichessPuzzles {
 
     // The puzzle repository.
 
-    /** Stores Liss puzzles for the guest puzzle flow. */
+    /** Stores Lichess puzzles for the guest puzzle flow. */
     public static void onGuestPuzzles(Object repository) {
         if (!active) return;
         new Thread(() -> {
@@ -272,7 +277,7 @@ public final class LichessPuzzles {
         }, "MorpheLichessPuzzles").start();
     }
 
-    /** Scores Liss puzzles locally; null lets chess.com score others. */
+    /** Scores Lichess puzzles locally; null lets chess.com score others. */
     public static Object solved(Object repository, Object solution) {
         if (!active || solution == null) return null;
         try {
@@ -290,6 +295,7 @@ public final class LichessPuzzles {
             save(after);
             count(correct ? SOLVED : FAILED);
             store.solved(number);
+            STORE_WORK.execute(() -> counts = null);
             give(repository, store, 1);
 
             int newRating = (int) Math.round(after.rating);
@@ -412,10 +418,18 @@ public final class LichessPuzzles {
         if (preferences != null) preferences.edit().putInt(key, preferences.getInt(key, 0) + 1).apply();
     }
 
-    // Offline puzzle packs, for the settings page.
+    // Offline puzzle packs, for the settings page. A pack holds up to millions of puzzles, so the
+    // database is never used on the main thread here: downloads, counts and deletes run one at a time.
+
+    private static final ExecutorService STORE_WORK = Executors.newSingleThreadExecutor();
+    private static final Handler MAIN = new Handler(Looper.getMainLooper());
 
     /** A download in progress: 0..100, -1 while its size is unknown, or null when none is. */
     private static volatile Integer downloading;
+    private static volatile boolean deleting;
+    /** The puzzles on the phone and how many of them are solved, or null until counted again. */
+    private static volatile int[] counts;
+    private static volatile boolean counting;
 
     public static String[] packNames() {
         return PuzzleStore.PACK_NAMES;
@@ -429,31 +443,61 @@ public final class LichessPuzzles {
         return downloading;
     }
 
-    public static int storedPuzzles() {
-        Context context = Utils.context();
-        return context == null ? 0 : PuzzleStore.get(context).count();
+    public static boolean deleting() {
+        return deleting;
     }
 
-    public static int storedSolved() {
+    /** The puzzles on the phone and how many are solved; null while they are counted, then done runs. */
+    public static int[] counts(Runnable done) {
+        int[] known = counts;
         Context context = Utils.context();
-        return context == null ? 0 : PuzzleStore.get(context).solvedCount();
+        if (known != null || context == null || counting) return known;
+        counting = true;
+        STORE_WORK.execute(() -> {
+            try {
+                PuzzleStore store = PuzzleStore.get(context);
+                counts = new int[]{store.count(), store.solvedCount()};
+            } catch (Throwable throwable) {
+                // Unreadable puzzles are as good as none, and asking again would fail again.
+                Utils.logError("Lichess puzzles not counted", throwable);
+                counts = new int[]{0, 0};
+            } finally {
+                counting = false;
+            }
+            MAIN.post(done);
+        });
+        return null;
     }
 
     /** Downloads a pack in the background; a toast says how it went. */
     public static void download(int pack) {
         Context context = Utils.context();
-        if (context == null || downloading != null) return;
+        if (context == null || downloading != null || deleting) return;
         downloading = -1;
-        new Thread(() -> {
-            boolean ok = PuzzleStore.get(context).download(pack, percent -> downloading = percent);
+        STORE_WORK.execute(() -> {
+            String error = PuzzleStore.get(context).download(pack, percent -> downloading = percent);
+            counts = null;
             downloading = null;
-            Utils.toast(ok ? "Lichess puzzles downloaded" : "Couldn't download Lichess puzzles. Check your connection.");
-        }, "MorpheLichessPack").start();
+            Utils.toast(error == null ? "Lichess puzzles downloaded" : error);
+        });
     }
 
-    public static void deletePuzzles() {
+    /** Deletes every puzzle in the background, then runs done on the main thread. */
+    public static void deletePuzzles(Runnable done) {
         Context context = Utils.context();
-        if (context != null && downloading == null) PuzzleStore.get(context).clear();
+        if (context == null || downloading != null || deleting) return;
+        deleting = true;
+        STORE_WORK.execute(() -> {
+            try {
+                PuzzleStore.get(context).clear();
+            } catch (Throwable throwable) {
+                Utils.logError("Lichess puzzles not deleted", throwable);
+            } finally {
+                counts = null;
+                deleting = false;
+            }
+            MAIN.post(done);
+        });
     }
 
     /** A Lichess session is open: chess.com's puzzle screen treats it as rated, online play. */
