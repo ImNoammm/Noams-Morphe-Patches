@@ -6,6 +6,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
+import android.os.SystemClock;
 
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Constructor;
@@ -44,8 +45,22 @@ public final class LichessPuzzles {
     private static boolean solving;
     /** Between Puzzles from Lichess and Solve Puzzles, guest puzzles are Lichess's. */
     private static volatile boolean active;
+    /** The Lichess puzzle screen is the activity in front. */
+    private static volatile boolean puzzleVisible;
     private static boolean watching;
     private static final String PUZZLE_SCREEN = "com.chess.features.puzzles.rated.RatedPuzzlesGameActivity";
+    private static final String HOME_SCREEN = "com.chess.home.HomeActivity";
+
+    /** Last hub path/user state, reused while a new one is not available. */
+    private static volatile Object lastPath;
+    private static volatile Object frozenPath;
+    private static volatile Object lastUser;
+    private static volatile Object frozenUser;
+    private static volatile boolean freezeActive;
+    private static volatile long unfreezeAt;
+
+    /** The hub's empty/loading user data; it must not replace the real XP/level. */
+    private static final String EMPTY_USER = "com.chess.features.puzzles.home.ui.a2$b";
 
     private static final Function0<Object> SOLVE = () -> {
         solve();
@@ -76,10 +91,7 @@ public final class LichessPuzzles {
     /** What the big button does: chess.com's own puzzles, Lichess's in chess.com's screen, or nothing more. */
     public static final int SOLVE_PUZZLES = 0, LICHESS_PUZZLES = 1, HANDLED = 2;
 
-    /**
-     * The big button was pressed. Lichess puzzles are only the ones downloaded in settings, so
-     * with none on the phone the settings page opens to download some.
-     */
+    /** Opens Liss puzzles, or the settings page when no pack is downloaded. */
     public static int onBigButton() {
         if (solving || !enabled()) return SOLVE_PUZZLES;
         if (storedPuzzles() == 0) {
@@ -93,26 +105,101 @@ public final class LichessPuzzles {
             Utils.toast("Download Lichess puzzles to play them offline");
             return HANDLED;
         }
+        frozenPath = lastPath;
+        frozenUser = lastUser;
+        freezeActive = frozenPath != null || frozenUser != null;
+        unfreezeAt = Long.MAX_VALUE;
         active = true;
+        puzzleVisible = true;
         watchScreen();
         return LICHESS_PUZZLES;
     }
 
-    /** The session ends when chess.com's puzzle screen closes. */
+    /** True while the Lichess puzzle screen is in front. */
+    public static boolean onPuzzleScreen() {
+        return puzzleVisible;
+    }
+
+    /** The hub's path, or the frozen pre-session path during a return. */
+    public static Object pathForHub(Object path) {
+        if (freezeActive) {
+            if (SystemClock.uptimeMillis() < unfreezeAt) return frozenPath;
+            freezeActive = false;
+        }
+        if (path != null) lastPath = path;
+        return path != null ? path : lastPath;
+    }
+
+    /** The hub's user data (XP, level, rating), frozen like the path. */
+    public static Object userForHub(Object user) {
+        if (freezeActive) {
+            if (SystemClock.uptimeMillis() < unfreezeAt) return frozenUser;
+            freezeActive = false;
+        }
+        if (user != null && !user.getClass().getName().equals(EMPTY_USER)) lastUser = user;
+        return user != null ? user : lastUser;
+    }
+
+    /** Ends the session before the hub resumes, not after the Liss screen is destroyed. */
+    private static void endSessionIfFinishing(Activity activity) {
+        if (isPuzzle(activity) && activity.isFinishing()) active = false;
+    }
+
+    private static boolean isPuzzle(Activity activity) {
+        return activity.getClass().getName().equals(PUZZLE_SCREEN);
+    }
+
+    private static boolean isHub(Activity activity) {
+        return activity.getClass().getName().equals(HOME_SCREEN);
+    }
+
+    private static void onPuzzlePaused(Activity activity) {
+        if (isPuzzle(activity) && !activity.isChangingConfigurations()) puzzleVisible = false;
+        endSessionIfFinishing(activity);
+    }
+
+    /** Watches the Liss screen's lifecycle. */
     private static void watchScreen() {
         if (watching || !(Utils.context() instanceof Application)) return;
         watching = true;
         ((Application) Utils.context()).registerActivityLifecycleCallbacks(new Application.ActivityLifecycleCallbacks() {
             @Override
-            public void onActivityDestroyed(Activity activity) {
-                if (activity.getClass().getName().equals(PUZZLE_SCREEN)) active = false;
+            public void onActivityPaused(Activity activity) {
+                onPuzzlePaused(activity);
             }
 
-            @Override public void onActivityCreated(Activity activity, Bundle state) {}
-            @Override public void onActivityStarted(Activity activity) {}
-            @Override public void onActivityResumed(Activity activity) {}
-            @Override public void onActivityPaused(Activity activity) {}
-            @Override public void onActivityStopped(Activity activity) {}
+            @Override
+            public void onActivityStopped(Activity activity) {
+                onPuzzlePaused(activity);
+            }
+
+            @Override
+            public void onActivityDestroyed(Activity activity) {
+                if (isPuzzle(activity) && !activity.isChangingConfigurations()) {
+                    puzzleVisible = false;
+                    active = false;
+                }
+            }
+
+            @Override
+            public void onActivityCreated(Activity activity, Bundle state) {
+                if (isPuzzle(activity)) puzzleVisible = true;
+            }
+
+            @Override
+            public void onActivityStarted(Activity activity) {
+                if (isPuzzle(activity)) puzzleVisible = true;
+            }
+
+            @Override
+            public void onActivityResumed(Activity activity) {
+                puzzleVisible = isPuzzle(activity);
+                // The hub is back: hold the frozen state for its first refresh.
+                if (isHub(activity) && freezeActive && unfreezeAt == Long.MAX_VALUE) {
+                    unfreezeAt = SystemClock.uptimeMillis() + 1000;
+                }
+            }
+
             @Override public void onActivitySaveInstanceState(Activity activity, Bundle state) {}
         });
     }
@@ -175,10 +262,7 @@ public final class LichessPuzzles {
 
     // The puzzle repository.
 
-    /**
-     * The puzzle screen asks the repository for its guest puzzles: in Lichess's mode, Lichess
-     * puzzles are stored for it in the background, and the screen picks them up from the database.
-     */
+    /** Stores Liss puzzles for the guest puzzle flow. */
     public static void onGuestPuzzles(Object repository) {
         if (!active) return;
         new Thread(() -> {
@@ -188,10 +272,7 @@ public final class LichessPuzzles {
         }, "MorpheLichessPuzzles").start();
     }
 
-    /**
-     * A finished puzzle is about to be scored by chess.com: a Lichess one is scored here instead.
-     * Returns the repository's result, or null to let chess.com score it.
-     */
+    /** Scores Liss puzzles locally; null lets chess.com score others. */
     public static Object solved(Object repository, Object solution) {
         if (!active || solution == null) return null;
         try {
