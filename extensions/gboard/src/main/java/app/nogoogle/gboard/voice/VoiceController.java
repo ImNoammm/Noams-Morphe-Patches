@@ -126,12 +126,17 @@ public final class VoiceController {
      * @return true when handled here (Gboard's own voice input is skipped).
      */
     public static boolean onLaunchVoice(Object data) {
-        if (!"whisper".equals(NoGoogleSettings.str(NoGoogleSettings.VOICE_ENGINE))) return false;
+        String engine = NoGoogleSettings.str(NoGoogleSettings.VOICE_ENGINE);
+        boolean futo = "futo".equals(engine);
+        if (!futo && !"whisper".equals(engine)) return false;
         // Gboard auto-starts voice input in some fields; never open the mic without a tap.
         if ("auto start voice".equals(data)) return true;
         InputMethodService ime = imeRef.get();
         if (ime == null) return false;
-        new Handler(Looper.getMainLooper()).post(() -> toggle(ime));
+        new Handler(Looper.getMainLooper()).post(() -> {
+            if (futo) FutoVoice.launch(ime);
+            else toggle(ime);
+        });
         return true;
     }
 

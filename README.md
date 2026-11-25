@@ -78,6 +78,12 @@ a time. Its voice and translation models download in No-Google settings, and so 
 once you turn on Download dictionaries from Google. Downloads and GIFs go through the helper app, which the
 keyboard installs or updates for you when it needs it (Android asks you to confirm).
 
+To use the [FUTO Voice Input](https://voiceinput.futo.org/) app for voice typing instead of Whisper, install it,
+turn on its keyboard in Android's keyboard settings, and choose FUTO Voice Input app as the voice typing Engine in
+No-Google settings. The mic key then opens FUTO's panel where the keyboard was; it types what you said and goes back
+to Gboard by itself. If FUTO isn't installed or its keyboard is off, the mic key says so. Nothing of FUTO's comes
+with the patches.
+
 ## Building it
 
 ```sh

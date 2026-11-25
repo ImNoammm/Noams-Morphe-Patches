@@ -179,8 +179,8 @@ public class ModMenuActivity extends Activity {
 
         header("Voice typing");
         choice("Engine", NoGoogleSettings.VOICE_ENGINE,
-                new String[]{"whisper", "stock"},
-                new String[]{"Offline Whisper", "Gboard default (needs Google)"});
+                new String[]{"whisper", "futo", "stock"},
+                new String[]{"Offline Whisper", "FUTO Voice Input app", "Gboard default (needs Google)"});
         List<String> names = new ArrayList<>();
         List<String> labels = new ArrayList<>();
         names.add("auto");

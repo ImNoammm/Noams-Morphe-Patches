@@ -47,6 +47,7 @@ private const val GIF_EXTENSION_INTERFACE =
     "Lcom/google/android/apps/inputmethod/libs/expression/extension/IGifKeyboardExtension;"
 private const val GIF_SEARCH_KEYBOARD = "Lcom/google/android/apps/inputmethod/libs/search/gif/GifSearchKeyboard;"
 internal const val GIF_HELPER_PACKAGE = "app.nogoogle.gifproxy"
+private const val FUTO_VOICE_PACKAGE = "org.futo.voiceinput"
 internal const val MOD_MENU_ACTIVITY = "app.nogoogle.gboard.ModMenuActivity"
 
 private fun Method.strings(): List<String> =
@@ -215,6 +216,24 @@ internal val nativeLibrariesPatch = resourcePatch {
     }
 }
 
+/**
+ * Lets the keyboard see the FUTO Voice Input app (Android package visibility), for the FUTO Voice
+ * Input engine: the mic key switches to FUTO's voice keyboard, which switches back by itself.
+ */
+private val futoVoiceInputPatch = resourcePatch {
+    execute {
+        document("AndroidManifest.xml").use { doc ->
+            val root = doc.documentElement
+            val queries = (0 until root.childNodes.length).map { root.childNodes.item(it) }
+                .filterIsInstance<Element>().firstOrNull { it.tagName == "queries" }
+                ?: doc.createElement("queries").also { root.appendChild(it) }
+            val pkg = doc.createElement("package")
+            pkg.setAttributeNS(ANDROID_NS, "android:name", FUTO_VOICE_PACKAGE)
+            queries.appendChild(pkg)
+        }
+    }
+}
+
 @Suppress("unused")
 val offlineVoicePatch = bytecodePatch(
     name = "Offline voice typing",
@@ -222,11 +241,13 @@ val offlineVoicePatch = bytecodePatch(
         "Whisper (whisper.cpp) in the keyboard's current language. Phrases are transcribed while " +
         "you talk and typed when you tap Done; ACFT models only encode the recorded audio, so they " +
         "are several times faster. Models are downloaded in No-Google settings (through the " +
-        "network helper app) or copied into the app's models folder.",
+        "network helper app) or copied into the app's models folder. No-Google settings can also " +
+        "send the mic key to the FUTO Voice Input app instead (installed separately, with its " +
+        "keyboard turned on in Android's keyboard settings).",
     default = true,
 ) {
     compatibleWith(COMPATIBILITY_GBOARD)
-    dependsOn(extensionPatch, nativeLibrariesPatch)
+    dependsOn(extensionPatch, nativeLibrariesPatch, futoVoiceInputPatch)
 
     execute {
         // Capture the InputMethodService so the controller can type through it.

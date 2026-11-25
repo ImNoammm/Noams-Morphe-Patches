@@ -36,7 +36,7 @@ public final class NoGoogleSettings {
     public static final String INCOGNITO_CLIPBOARD = "incognito_clipboard"; // copied text still kept while it is on
     // Other languages' dictionaries from Google, through the network helper (Dictionaries)
     public static final String DICTIONARY_DOWNLOADS = "dictionary_downloads";
-    public static final String VOICE_ENGINE = "voice_engine";          // "whisper" | "stock"
+    public static final String VOICE_ENGINE = "voice_engine";          // "whisper" | "futo" | "stock"
     public static final String VOICE_MODEL = "voice_model";            // "auto" | file name
     public static final String VOICE_THREADS = "voice_threads";
     public static final String VOICE_AUTO_STOP = "voice_auto_stop";
