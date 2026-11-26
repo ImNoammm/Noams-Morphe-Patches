@@ -1,3 +1,9 @@
+# [1.5.2](https://github.com/ImNoammm/Noams-Morphe-Patches/compare/v1.5.1...v1.5.2) (2026-11-26)
+
+### Bug Fixes
+
+* **Chess.com:** Stockfish analysis patches again in Morphe Manager 2.7. Manager 2.7 runs patches in a new Java runtime that can't look up github.com on some phones, so the Stockfish download failed. When that happens, the patch now looks the address up over DNS over HTTPS, thanks to @quwi26 for finding the cause
+
 # [1.5.1](https://github.com/ImNoammm/Noams-Morphe-Patches/compare/v1.5.0...v1.5.1) (2026-11-07)
 
 ### Bug Fixes
