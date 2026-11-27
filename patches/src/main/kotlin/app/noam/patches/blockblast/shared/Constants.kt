@@ -11,6 +11,6 @@ object Constants {
         // Google Play ships it as a split bundle (base + ABI/density/language/asset-pack splits).
         apkFileType = ApkFileType.APKM,
         appIconColor = 0x3C5CB6,
-        targets = listOf(AppTarget(version = "10.8.1")),
+        targets = listOf(AppTarget(version = "11.0.8")),
     )
 }

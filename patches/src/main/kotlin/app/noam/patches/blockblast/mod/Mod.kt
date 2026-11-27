@@ -70,8 +70,8 @@ internal object Mod {
     }
 }
 
-// assets/main.js of Block Blast 10.8.1 (HEK-encrypted), the only build the replacement boot script is made from.
-private const val STOCK_MAIN_JS_SHA256 = "ad3bec65265ca02c21669d558d7851c3befa46de6d82f7d82b1824de8f95baa5"
+// assets/main.js of Block Blast 11.0.8 (HEK-encrypted), the only build the replacement boot script is made from.
+private const val STOCK_MAIN_JS_SHA256 = "1eef497aeec25674291ebbd11a9321e13d899d56daacc56447dc1adb2d4f6460"
 
 private val patchGuardManifestPatch = resourcePatch {
     execute {
@@ -104,7 +104,7 @@ internal val modLoaderPatch = rawResourcePatch(
         val mainJs = get("assets/main.js")
         val digest = MessageDigest.getInstance("SHA-256").digest(mainJs.readBytes()).joinToString("") { "%02x".format(it) }
         if (digest != STOCK_MAIN_JS_SHA256) {
-            throw PatchException("Unsupported Block Blast build: assets/main.js is not the one from version 10.8.1")
+            throw PatchException("Unsupported Block Blast build: assets/main.js is not the one from version 11.0.8")
         }
         mainJs.writeBytes(Hek.encode(Mod.resource("main.js").toByteArray()))
     }
