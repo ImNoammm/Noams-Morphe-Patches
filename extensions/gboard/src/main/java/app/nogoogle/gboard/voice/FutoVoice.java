@@ -7,7 +7,6 @@ import android.util.Log;
 import android.view.inputmethod.InputMethodInfo;
 import android.view.inputmethod.InputMethodManager;
 import android.view.inputmethod.InputMethodSubtype;
-import android.widget.Toast;
 
 import java.util.List;
 
@@ -25,26 +24,28 @@ public final class FutoVoice {
     private FutoVoice() {
     }
 
-    /** Called on the main thread when the mic key is tapped and the engine is FUTO. */
-    static void launch(InputMethodService ime) {
+    /**
+     * Called on the main thread when the mic key is tapped and the engine is FUTO. False when its
+     * keyboard isn't turned on (the mic uses Whisper then: a toast from the keyboard isn't shown
+     * while its notifications are off, Android's default).
+     */
+    static boolean open(InputMethodService ime) {
         InputMethodManager imm = ime.getSystemService(InputMethodManager.class);
-        if (imm == null) {
-            toast(ime, "Can't reach Android's keyboard service to start FUTO Voice Input");
-            return;
-        }
-        InputMethodInfo futo = find(imm.getEnabledInputMethodList());
-        if (futo == null) {
-            toast(ime, installed(ime, imm)
-                    ? "FUTO Voice Input's keyboard is turned off. Turn it on in Android's keyboard settings"
-                    : "FUTO Voice Input isn't installed");
-            return;
-        }
+        InputMethodInfo futo = imm == null ? null : find(imm.getEnabledInputMethodList());
+        if (futo == null) return false;
         try {
             ime.switchInputMethod(futo.getId(), voiceSubtype(imm, futo));
+            return true;
         } catch (Throwable t) {
             Log.w(TAG, "switching to FUTO Voice Input failed", t);
-            toast(ime, "Couldn't switch to FUTO Voice Input");
+            return false;
         }
+    }
+
+    /** For the settings: whether the mic can open it now. */
+    public static boolean available(Context context) {
+        InputMethodManager imm = context.getSystemService(InputMethodManager.class);
+        return imm != null && find(imm.getEnabledInputMethodList()) != null;
     }
 
     private static InputMethodInfo find(List<InputMethodInfo> list) {
@@ -53,8 +54,10 @@ public final class FutoVoice {
         return null;
     }
 
-    private static boolean installed(Context context, InputMethodManager imm) {
-        if (find(imm.getInputMethodList()) != null) return true;
+    /** For the settings: installed, with its keyboard turned on or off. */
+    public static boolean installed(Context context) {
+        InputMethodManager imm = context.getSystemService(InputMethodManager.class);
+        if (imm != null && find(imm.getInputMethodList()) != null) return true;
         try {
             context.getPackageManager().getPackageInfo(PACKAGE, 0);
             return true;
@@ -77,9 +80,5 @@ public final class FutoVoice {
         } catch (Throwable ignored) {
         }
         return null;
-    }
-
-    private static void toast(Context context, String text) {
-        Toast.makeText(context, text, Toast.LENGTH_LONG).show();
     }
 }

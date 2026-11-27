@@ -8,6 +8,7 @@ import app.noam.patches.chesscom.misc.settings.settingsPatch
 import app.noam.patches.chesscom.shared.Constants
 import app.noam.patches.chesscom.shared.markFeaturePatched
 import app.noam.patches.chesscom.shared.returnString
+import com.android.tools.smali.dexlib2.iface.ClassDef
 import java.io.BufferedInputStream
 import java.io.File
 import java.io.IOException
@@ -28,7 +29,7 @@ import javax.net.ssl.SSLSocket
 import javax.net.ssl.SSLSocketFactory
 
 private const val ANALYSIS = "${Constants.EXTENSION_PACKAGE}/stockfish/Analysis;"
-private const val BOARD_STATE = "Lcom/chess/chessboard/vm/movesinput/CBViewModelStateImpl;"
+private const val BOARD_STATE_PACKAGE = "Lcom/chess/chessboard/vm/movesinput/"
 private const val V2_BOARD = "Lcom/chess/chessboard/v2/ChessBoardView;"
 
 /** Stockfish's own Android build, downloaded while patching so the patches don't carry it. */
@@ -502,8 +503,20 @@ val stockfishPatch = bytecodePatch(
     execute {
         markFeaturePatched("stockfishPatched")
 
-        val state = mutableClassDefBy(BOARD_STATE)
-        val positionType = state.methods.single { it.name == "getPosition" && it.parameterTypes.isEmpty() }.returnType
+        val positionType = mutableClassDefBy(V2_BOARD).methods
+            .single { it.name == "getPosition" && it.parameterTypes.isEmpty() }.returnType
+        // The older board's view state: the moves-input class holding a position, with a setter for it.
+        fun ClassDef.setsPosition() = methods.any { method ->
+            method.name != "<init>" && method.returnType == "V" &&
+                method.parameterTypes.map { it.toString() } == listOf(positionType) && method.implementation != null
+        }
+        val states = mutableListOf<ClassDef>()
+        classDefForEach { classDef ->
+            if (classDef.type.startsWith(BOARD_STATE_PACKAGE) && classDef.setsPosition() &&
+                classDef.methods.any { it.name == "getPosition" && it.returnType == positionType && it.implementation != null }
+            ) states += classDef
+        }
+        val state = mutableClassDefBy(states.singleOrNull() ?: throw PatchException("Expected one board view state, found ${states.size}"))
 
         // The position's FEN: the one no-argument String method of its (obfuscated) interface.
         val position = classDefByOrNull { it.type == positionType }

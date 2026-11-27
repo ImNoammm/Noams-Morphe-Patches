@@ -127,15 +127,17 @@ public final class VoiceController {
      */
     public static boolean onLaunchVoice(Object data) {
         String engine = NoGoogleSettings.str(NoGoogleSettings.VOICE_ENGINE);
+        boolean google = "google".equals(engine);
         boolean futo = "futo".equals(engine);
-        if (!futo && !"whisper".equals(engine)) return false;
+        if (!google && !futo && !"whisper".equals(engine)) return false;
         // Gboard auto-starts voice input in some fields; never open the mic without a tap.
         if ("auto start voice".equals(data)) return true;
         InputMethodService ime = imeRef.get();
         if (ime == null) return false;
+        // Google voice typing or FUTO Voice Input when its keyboard is turned on in Android's keyboard list, else Whisper.
         new Handler(Looper.getMainLooper()).post(() -> {
-            if (futo) FutoVoice.launch(ime);
-            else toggle(ime);
+            boolean app = active == null && (google ? GoogleVoiceTyping.open(ime) : futo && FutoVoice.open(ime));
+            if (!app) toggle(ime);
         });
         return true;
     }
