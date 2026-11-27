@@ -34,7 +34,7 @@ Right now it has patches for these apps:
   Lichess's puzzles play offline in chess.com's own puzzle screen. Every bot can be played, Play Coach has no daily limit and content the app itself keeps for
   Premium opens up. No ads, rating prompts or Premium upsells, and a clone option installs it next to the real
   app. You turn it all on and off under More, Noam's Patches.
-- Block Blast 10.8.1: Classic trays are dealt by the iOS version's own game code, which runs inside the app, and
+- Block Blast 11.0.8: Classic trays are dealt by the iOS version's own game code, which runs inside the app, and
   you get the iOS version's color, block, menu and animation themes and its extra effects. No ads, no revive
   offer, no impossible trays, a quicker game over and an optional fake best score that keeps your real one
   underneath. Most of it lives in the Mod settings row of the game's settings.
